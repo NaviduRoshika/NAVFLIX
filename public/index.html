@@ -503,6 +503,18 @@
   .crumb { font-size: 12px; color: var(--muted); word-break: break-all; margin-bottom: 14px; }
   .dir { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 6px; cursor: pointer; }
   .dir:hover { background: #23232c; }
+  .dir.picked { background: #1b2a24; }
+  .dir .pick { width: 16px; height: 16px; accent-color: var(--red); flex: none; cursor: pointer; }
+  .dir > .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir .into { color: var(--muted); font-size: 17px; opacity: 0; flex: none; }
+  .dir:hover .into { opacity: .8; }
+  .pickbar {
+    display: flex; align-items: center; gap: 14px; font-size: 12.5px; color: var(--muted);
+    padding: 0 0 10px; border-bottom: 1px solid var(--line); margin: 0 0 8px;
+  }
+  .pickbar .link { color: #cfd3dc; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .pickbar .link:hover { color: #fff; }
+  .pickbar .spacer { flex: 1; }
   label.f { display: block; margin-bottom: 16px; }
   label.f > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
   input[type=text], input[type=number] {
@@ -572,6 +584,7 @@
   <div class="dh" id="folderTitle">Add a collection</div>
   <div class="db">
     <div class="crumb" id="crumb">This PC</div>
+    <div class="pickbar" id="pickbar" hidden></div>
     <div id="dirs"></div>
   </div>
   <div class="df">
@@ -1415,6 +1428,7 @@ const GUIDE = [
   ['start', 'Getting started', [
     ['Add a folder', 'Press <b>+ Add</b> in the top bar, or the <b>Add a folder</b> tile in the Library. ' +
       'Point it at a folder of films, or at a TV show. Nothing is copied or moved, since NAVFLIX only reads.'],
+    ['Several at once', 'Every folder in the picker has a tick box, and <b>Tick all n here</b> takes the lot — a shelf of sixty shows is one trip through the dialog rather than sixty. Clicking the row still walks into it; only the box selects. Ticks are kept while you move around, so shows from one folder and films from another can go in together. Anything with no video files in it is skipped and the count says so.'],
     ['Films or a show?', 'It works this out on its own. If most files look like episodes ' +
       '(<code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, or a <code>Season 2</code> folder) ' +
       'the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf.'],
@@ -1438,7 +1452,7 @@ const GUIDE = [
   ['browse', 'Getting around', [
     ['Library', 'The <b>☰ Library</b> link, or the NAVFLIX wordmark, shows every folder as a card with its ' +
       'cover, progress and what is next. Better than the tab row once you have a few.'],
-    ['The tab row', 'It carries the three collections you played most recently, plus whatever you have open or playing. The rest sit behind <b>+n more</b>, which opens the Library. Adding a tenth folder no longer buries the ones you watch.'],
+    ['The tab row', 'It carries the three collections you played most recently, <b>newest first</b>, plus whatever you have open or playing. The rest sit behind <b>+n more</b>, which opens the Library. Adding a tenth folder no longer buries the ones you watch.'],
     ['Films or series', 'Above the Library grid sit <b>Everything</b> / <b>Films</b> / <b>TV series</b> buttons. A collection is filed by what is actually in its folder. A folder on a drive that is currently unplugged is still filed correctly, because the filenames it saw last time are enough to tell episodes from films. A button with nothing behind it is greyed out rather than hidden.'],
     ['Stop the extra tab', 'Once you launch from the installed icon, the browser window the server opens on startup is just clutter. Turn off <b>Open a window when NAVFLIX starts</b> in Settings. The server still prints its address, so you can always get back by hand.'],
     ['Install it as an app', 'In Chrome or Edge, the address bar shows an install icon while NAVFLIX is open. Installing gives it a Start menu entry and its own window with no address bar and no browser buttons. It still needs the server running, so keep starting it the usual way.'],
@@ -1568,26 +1582,34 @@ function goGuide() {
 // mid-way through; the Library holds the rest.
 const TAB_LIMIT = 3;
 
+// Newest first. A folder you have never played has no timestamp and sinks.
+function byRecency(a, b) {
+  const ta = a.lastPlayed || '', tb = b.lastPlayed || '';
+  return ta === tb ? 0 : (ta < tb ? 1 : -1);
+}
+
 function tabsToShow() {
   const all = S.collections;
-  if (all.length <= TAB_LIMIT) return { shown: all, hidden: 0 };
+  if (all.length <= TAB_LIMIT) return { shown: all.slice().sort(byRecency), hidden: 0 };
 
-  // Most recently played first. Never-played ones have no timestamp and sink.
-  const recent = all.slice().sort((a, b) => {
-    const ta = a.lastPlayed || "", tb = b.lastPlayed || "";
-    return ta === tb ? 0 : (ta < tb ? 1 : -1);
-  }).slice(0, TAB_LIMIT);
+  const recent = all.slice().sort(byRecency).slice(0, TAB_LIMIT);
 
   // Whatever is playing, and whatever you have open, stay pinned regardless of
   // age. A tab that disappears the moment you click it reads as a bug.
   all.forEach((c) => {
-    const pin = c.playing || (c.id === S.activeId && view === "collection");
+    const pin = c.playing || (c.id === S.activeId && view === 'collection');
     if (pin && recent.indexOf(c) === -1) recent.push(c);
   });
 
-  // Back into the collections own order, so the bar does not reshuffle itself
-  // under the cursor every time you finish an episode.
-  recent.sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  // Newest first, so the bar reads as what you have actually been watching
+  // rather than the order the folders happened to be added in.
+  //
+  // This was deliberately not done before, for fear the bar would reshuffle
+  // under the cursor. In practice it barely moves: the collection being played
+  // has its timestamp refreshed on every poll, so it holds first place for as
+  // long as it is playing. The one reorder happens when you start playing a
+  // different folder, which is the moment you would want it to.
+  recent.sort(byRecency);
   return { shown: recent, hidden: all.length - recent.length };
 }
 
@@ -2208,28 +2230,100 @@ async function cancelArt() {
 /* ---------------------------------------------------------------- folder picker */
 function openAdd() {
   folderMode = { kind: 'add', id: null };
+  picked = {};
   $('#folderTitle').textContent = 'Add a collection';
   dlgFolder.showModal();
   loadBrowse('');
 }
 function openRepath(id) {
   folderMode = { kind: 'repath', id: id };
+  picked = {};
   $('#folderTitle').textContent = 'Locate this collection\u2019s folder';
   if (dlgManage.open) dlgManage.close();
   dlgFolder.showModal();
   loadBrowse('');
 }
+// Ticked folders, by full path. Kept while the dialog is open so you can
+// gather shows from one folder and films from another in a single go.
+let picked = {};
+let browseDirs = [];
+
+const pickCount = () => Object.keys(picked).length;
+
 async function loadBrowse(p) {
   const d = await api('/api/browse?path=' + encodeURIComponent(p || ''));
   browsePath = d.path;
+  browseDirs = d.dirs;
   $('#crumb').textContent = d.path || 'This PC';
   $('#btnUp').disabled = !d.path;
-  $('#btnUseFolder').disabled = !d.path;
-  $('#btnUseFolder').textContent = d.videoCount ? 'Use this folder (' + d.videoCount + ' videos)' : 'Use this folder';
+  $('#btnUseFolder').dataset.videos = d.videoCount || 0;
+
+  // Only adding takes several at once. Relinking a collection means one folder
+  // by definition, so it keeps the plain list.
+  const many = folderMode.kind === 'add';
   $('#dirs').innerHTML = d.dirs.length
-    ? d.dirs.map((x) => '<div class="dir" data-p="' + esc(x.path) + '">&#128193; <span>' + esc(x.name) + '</span></div>').join('')
+    ? d.dirs.map((x) => '<div class="dir' + (picked[x.path] ? ' picked' : '') + '" data-p="' + esc(x.path) + '">' +
+        (many ? '<input type="checkbox" class="pick"' + (picked[x.path] ? ' checked' : '') + '>' : '') +
+        '&#128193; <span class="nm">' + esc(x.name) + '</span>' +
+        '<span class="into">&#8250;</span></div>').join('')
     : '<div class="muted">No subfolders here.</div>';
-  $('#dirs').querySelectorAll('.dir').forEach((el) => { el.onclick = () => loadBrowse(el.dataset.p); });
+
+  $('#dirs').querySelectorAll('.dir').forEach((el) => {
+    // The row walks into the folder; the tick box selects it without moving.
+    el.onclick = () => loadBrowse(el.dataset.p);
+    const box = el.querySelector('.pick');
+    if (box) box.onclick = (e) => { e.stopPropagation(); togglePick(el.dataset.p, box.checked); };
+  });
+  paintPicks();
+}
+
+function togglePick(p, on) {
+  if (on) picked[p] = true; else delete picked[p];
+  paintPicks();
+}
+
+function pickAll(on) {
+  browseDirs.forEach((x) => { if (on) picked[x.path] = true; else delete picked[x.path]; });
+  loadBrowse(browsePath);
+}
+
+function clearPicks() {
+  picked = {};
+  loadBrowse(browsePath);
+}
+
+// The footer button does one of two jobs depending on whether anything is
+// ticked, so it has to say which.
+function paintPicks() {
+  const n = pickCount();
+  const many = folderMode.kind === 'add';
+  const bar = $('#pickbar');
+  const btn = $('#btnUseFolder');
+
+  document.querySelectorAll('#dirs .dir').forEach((el) => {
+    el.classList.toggle('picked', !!picked[el.dataset.p]);
+  });
+
+  bar.hidden = !many || (!browseDirs.length && !n);
+  if (!bar.hidden) {
+    const here = browseDirs.filter((x) => picked[x.path]).length;
+    bar.innerHTML = '<span>' + (n
+      ? '<b>' + n + '</b> folder' + (n === 1 ? '' : 's') + ' ticked'
+      : 'Tick folders to add several at once') + '</span><div class="spacer"></div>' +
+      (browseDirs.length && here < browseDirs.length
+        ? '<span class="link" data-all="1">Tick all ' + browseDirs.length + ' here</span>' : '') +
+      (n ? '<span class="link" data-clear="1">Clear</span>' : '');
+    const all = bar.querySelector('[data-all]');
+    if (all) all.onclick = () => pickAll(true);
+    const clear = bar.querySelector('[data-clear]');
+    if (clear) clear.onclick = () => clearPicks();
+  }
+
+  const videos = Number(btn.dataset.videos || 0);
+  btn.disabled = n ? false : !browsePath;
+  btn.textContent = n
+    ? 'Add ' + n + ' folder' + (n === 1 ? '' : 's')
+    : (videos ? 'Use this folder (' + videos + ' videos)' : 'Use this folder');
 }
 $('#btnUp').onclick = async () => {
   const d = await api('/api/browse?path=' + encodeURIComponent(browsePath));
@@ -2246,15 +2340,41 @@ $('#btnUseFolder').onclick = async () => {
   btn.parentNode.insertBefore(bar, btn.nextSibling);
   btn.disabled = true;
   $('#btnUp').disabled = true;
-  btn.textContent = folderMode.kind === 'repath' ? 'Relinking\u2026' : 'Scanning\u2026';
-
+  const chosen = Object.keys(picked);
+  // Every folder is walked before the dialog can close, so a batch of shows on a
+  // USB drive is a genuine wait. Say how many are being counted, not just that
+  // something is happening.
+  btn.textContent = folderMode.kind === 'repath'
+    ? 'Relinking\u2026'
+    : (chosen.length > 1 ? 'Scanning ' + chosen.length + ' folders\u2026' : 'Scanning\u2026');
   try {
-    S = folderMode.kind === 'repath'
-      ? await post('/api/collections/repath', { id: folderMode.id, path: browsePath })
-      : await post('/api/collections/add', { path: browsePath });
+    if (folderMode.kind === 'repath') {
+      S = await post('/api/collections/repath', { id: folderMode.id, path: browsePath });
+    } else if (chosen.length) {
+      S = await post('/api/collections/add', { paths: chosen });
+    } else {
+      S = await post('/api/collections/add', { path: browsePath });
+    }
+    picked = {};
     dlgFolder.close();
     lastSig = '';
-    paint();
+    // A batch has no single collection to land on, and the Library is where you
+    // can see what arrived. Say what was left out rather than silently dropping it.
+    if (chosen.length > 1) {
+      const gone = (S.skipped || []).filter((x) => x.why === 'gone').length;
+      const dupe = (S.skipped || []).filter((x) => x.why === 'already').length;
+      const empty = (S.skipped || []).filter((x) => x.why === 'empty').length;
+      const note = [
+        S.added ? 'Added ' + S.added + ' folder' + (S.added === 1 ? '' : 's') : 'Nothing added',
+        dupe ? dupe + ' already there' : '',
+        empty ? empty + ' with no videos' : '',
+        gone ? gone + ' not found' : '',
+      ].filter(Boolean).join(' \u00b7 ');
+      toast(note);
+      goLibrary();
+    } else {
+      paint();
+    }
   } catch (e) {
     toast(e.message);
   } finally {

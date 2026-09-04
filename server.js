@@ -2326,19 +2326,45 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/collections/add' && req.method === 'POST') {
       const b = await readBody(req);
-      const dir = String(b.path || '').trim();
-      if (!dir || !fs.existsSync(dir)) return json(res, 400, { error: 'That folder does not exist.' });
-      const existing = state.collections.find((c) => c.path === dir);
-      if (existing) {
-        state.activeId = existing.id;
-        saveNow();
-        return json(res, 200, snapshot(local));
+      // One folder, or a batch of them: the picker can tick several at once, which
+      // is what you want the first time you point NAVFLIX at a shelf of shows.
+      const batch = Array.isArray(b.paths) && b.paths.length > 0;
+      const wanted = batch
+        ? b.paths.map((x) => String(x || '').trim())
+        : [String(b.path || '').trim()];
+
+      let firstAdded = null;
+      let added = 0;
+      const skipped = [];
+
+      for (const dir of wanted) {
+        if (!dir || !fs.existsSync(dir)) { skipped.push({ name: path.basename(dir) || dir, why: 'gone' }); continue; }
+        const existing = state.collections.find((c) => c.path === dir);
+        if (existing) {
+          if (!firstAdded) state.activeId = existing.id;
+          skipped.push({ name: existing.name, why: 'already' });
+          continue;
+        }
+        // Only when several were ticked. Adding one empty folder on purpose —
+        // before copying files into it — has always been allowed and still is.
+        // The scan costs nothing here: the snapshot below walks every collection
+        // anyway, and scanLibrary caches what it just read.
+        if (batch && wanted.length > 1 && !scanLibrary(dir).length) {
+          skipped.push({ name: path.basename(dir), why: 'empty' });
+          continue;
+        }
+        const c = blankCollection(dir, batch ? '' : String(b.name || '').trim());
+        state.collections.push(c);
+        added++;
+        if (!firstAdded) { firstAdded = c.id; state.activeId = c.id; }
       }
-      const c = blankCollection(dir, String(b.name || '').trim());
-      state.collections.push(c);
-      state.activeId = c.id;
+
+      if (!added && !skipped.length) return json(res, 400, { error: 'That folder does not exist.' });
+      if (!added && skipped.every((s) => s.why === 'gone')) {
+        return json(res, 400, { error: 'That folder does not exist.' });
+      }
       saveNow();
-      return json(res, 200, snapshot(local));
+      return json(res, 200, Object.assign(snapshot(local), { added: added, skipped: skipped }));
     }
 
     if (p === '/api/collections/select' && req.method === 'POST') {

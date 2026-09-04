@@ -20,6 +20,14 @@ and rating for every title.
 You can track several marathons at once — MCU in one folder, DC in another. Add a
 folder per marathon and switch between them with the tabs at the top.
 
+**Adding several at once.** Every folder in the picker has a tick box, and
+**Tick all n here** takes the lot — pointing at a `Tv Series` folder of sixty
+shows is one trip through the dialog, not sixty. Ticks survive walking to another
+folder, so shows and films can go in together. Clicking a row still walks into it;
+only the box selects. A folder with no video files in it is skipped when it was
+part of a batch, and the toast says how many were left out and why — adding one
+empty folder deliberately, before copying files into it, still works.
+
 Each collection is completely separate: its own queue, its own position in that
 queue, its own watch log, and **its own episode length**. MCU can run in hour-long
 sittings while a DC marathon runs in 45 minute ones.
@@ -27,8 +35,8 @@ sittings while a DC marathon runs in 45 minute ones.
 Only one thing plays at a time. If you switch tabs mid-episode, a banner keeps the
 running one one click away.
 
-The tab row shows the **three collections you played most recently**, plus whatever
-is open or playing — with a dozen folders added it was a wall of names you never
+The tab row shows the **three collections you played most recently**, newest
+first, plus whatever is open or playing — with a dozen folders added it was a wall of names you never
 clicked. The rest sit behind **+n more**, which opens the Library.
 
 The Library files each collection as a **film shelf** or a **TV series** based on
