@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 const qr = require('./qr');
+const probe = require('./probe');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -571,73 +572,9 @@ function displayTitle(c, rel, series) {
 //
 // This reads the track table straight out of the file header. No ffmpeg.
 
-const EBML = {
-  SEGMENT: 0x18538067, TRACKS: 0x1654AE6B, TRACK_ENTRY: 0xAE,
-  TRACK_TYPE: 0x83, LANGUAGE: 0x22B59C, LANG_BCP47: 0x22B59D,
-  CODEC_ID: 0x86, NAME: 0x536E, FLAG_DEFAULT: 0x88,
-};
-const TRACK_TYPES = { 1: 'video', 2: 'audio', 17: 'subtitle' };
+// The container parsing lives in probe.js, which reads the same track table
+// for the Details view. One reader, one set of edge cases.
 const subCache = new Map(); // absolute path -> { mtimeMs, size, tracks }
-
-function readVint(buf, pos, keepMarker) {
-  const b = buf[pos];
-  if (b === undefined) return null;
-  let len = 1, mask = 0x80;
-  while (len <= 8 && !(b & mask)) { mask >>= 1; len++; }
-  if (len > 8) return null;
-  let value = keepMarker ? b : (b & (mask - 1));
-  let unknown = !keepMarker && (b & (mask - 1)) === mask - 1;
-  for (let i = 1; i < len; i++) {
-    const nb = buf[pos + i];
-    if (nb === undefined) return null;
-    value = value * 256 + nb;
-    if (nb !== 0xFF) unknown = false;
-  }
-  return { value: value, len: len, unknown: unknown };
-}
-
-function ebmlUint(b) { let v = 0; for (const x of b) v = v * 256 + x; return v; }
-function ebmlStr(b) { return b.toString('utf8').replace(/\0+$/, ''); }
-
-function ebmlWalk(buf, start, end, entry, out) {
-  let pos = start;
-  while (pos < end) {
-    const id = readVint(buf, pos, true);
-    if (!id) return;
-    const size = readVint(buf, pos + id.len, false);
-    if (!size) return;
-    const body = pos + id.len + size.len;
-    const stop = size.unknown ? end : Math.min(end, body + size.value);
-
-    if (id.value === EBML.SEGMENT || id.value === EBML.TRACKS) {
-      ebmlWalk(buf, body, stop, null, out);
-    } else if (id.value === EBML.TRACK_ENTRY) {
-      const t = {};
-      ebmlWalk(buf, body, stop, t, out);
-      out.push(t);
-    } else if (entry) {
-      const s = buf.slice(body, stop);
-      if (id.value === EBML.TRACK_TYPE) entry.type = TRACK_TYPES[ebmlUint(s)] || 'other';
-      else if (id.value === EBML.LANGUAGE) entry.lang = ebmlStr(s);
-      else if (id.value === EBML.LANG_BCP47) entry.lang = ebmlStr(s) || entry.lang;
-      else if (id.value === EBML.CODEC_ID) entry.codec = ebmlStr(s);
-      else if (id.value === EBML.NAME) entry.name = ebmlStr(s);
-      else if (id.value === EBML.FLAG_DEFAULT) entry.def = ebmlUint(s) === 1;
-    }
-    if (size.unknown) return;
-    pos = body + size.value;
-  }
-}
-
-function readTracks(file, bytes) {
-  const fd = fs.openSync(file, 'r');
-  const buf = Buffer.alloc(bytes);
-  const n = fs.readSync(fd, buf, 0, bytes, 0);
-  fs.closeSync(fd);
-  const out = [];
-  ebmlWalk(buf.slice(0, n), 0, n, null, out);
-  return out;
-}
 
 // VLC numbers its streams by the track's position in the file, and that is
 // exactly what --sub-track-id expects. Verified against VLC's reported ids.
@@ -651,12 +588,7 @@ function subtitleTracks(c, rel) {
   if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.tracks;
 
   let all = [];
-  try {
-    all = readTracks(file, 1024 * 1024);
-    if (!all.length) all = readTracks(file, 8 * 1024 * 1024);   // Tracks sits late
-  } catch (e) {
-    all = [];
-  }
+  try { all = probe.matroskaTracks(file); } catch (e) { all = []; }
 
   const tracks = [];
   all.forEach((t, position) => {
@@ -1507,6 +1439,242 @@ async function runArtJob(c, force) {
   }
 }
 
+// ---------------------------------------------------------------- details
+//
+// Two very different kinds of fact about the same film, gathered by one job.
+//
+//   What is in the file   resolution, codecs, audio and subtitle tracks, real
+//                         runtime. Read straight out of the container header by
+//                         probe.js. Local, exact, and free.
+//
+//   What the film is      cast, director, writer, genres, IMDb rating, plot.
+//                         One catalogue lookup per title, cached forever after.
+//
+// Both are kept on the file's own progress record, so they survive a restart and
+// a drive being unplugged. Neither is ever gathered behind your back: the scan
+// only runs when you press the button.
+
+let detailJob = null; // { collectionId, total, done, phase, running, ... }
+
+// The probe is cheap to repeat but not free — roughly 75ms a file on an external
+// drive, which is a minute for a shelf of 800. Cache on size and mtime so a
+// rescan only pays for what actually changed.
+function storedMedia(c, rel, size) {
+  const m = rec(c, rel).media;
+  if (!m || !m.at) return null;
+  if (size && m.size && m.size !== size) return null;   // the file was replaced
+  return m;
+}
+
+function probeInto(c, rel) {
+  const file = path.join(c.path, rel.split('/').join(path.sep));
+  const p = probe.probeFile(file);
+  if (!p) return null;
+  p.at = new Date().toISOString();
+  const r = rec(c, rel);
+  r.media = p;
+  // Runtime used to arrive only after VLC had played a title once, which is why
+  // an untouched shelf shows "Not started" with no length and no part strip.
+  // The container knows it already. VLC still overwrites this on first play, so
+  // the worst case is the estimate being replaced by the same number.
+  if (!r.duration && p.duration > 0) r.duration = p.duration;
+  return p;
+}
+
+// Cinemeta's catalogue search returns no people at all — only id, name, poster
+// and year — so identifying a film and describing it are two separate requests.
+async function fetchTitleInfo(kind, imdb) {
+  const full = await getJson('https://v3-cinemeta.strem.io/meta/' + kind + '/' + imdb + '.json');
+  const m = (full && full.meta) || {};
+  const list = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : (v ? [String(v)] : []));
+  return {
+    imdb: imdb,
+    name: m.name || '',
+    year: String(m.year || m.releaseInfo || ''),
+    rating: m.imdbRating ? String(m.imdbRating) : '',
+    runtime: m.runtime || '',
+    genres: list(m.genres || m.genre),
+    cast: list(m.cast),
+    director: list(m.director),
+    writer: list(m.writer),
+    country: m.country || '',
+    awards: m.awards || '',
+    description: m.description || '',
+    at: new Date().toISOString(),
+  };
+}
+
+// A show is one lookup for the whole collection; its people go on seriesMeta
+// beside the episode list that is already there.
+async function fetchShowInfo(c) {
+  if (!c.seriesMeta || !c.seriesMeta.imdb) return null;
+  const info = await fetchTitleInfo('series', c.seriesMeta.imdb);
+  c.seriesMeta.info = info;
+  saveNow();
+  return info;
+}
+
+async function runDetailJob(c, force) {
+  const queue = buildQueue(c);
+  const series = !!seriesShape(c);
+  detailJob = {
+    collectionId: c.id, total: queue.length, done: 0,
+    read: 0, found: 0, failed: 0, running: true,
+    phase: 'files', note: 'reading file headers',
+  };
+
+  // Phase one: what is inside each file. No network, so this always works.
+  //
+  // Reading a header is synchronous and takes about 75ms on an external drive,
+  // so a shelf of 100 films would hold the event loop for eight seconds — long
+  // enough that the progress bar could never be drawn and the page would look
+  // hung. Hand control back between files so the poll gets served.
+  for (const item of queue) {
+    if (!detailJob || !detailJob.running) break;
+    detailJob.done++;
+    if (!force && storedMedia(c, item.rel, item.size)) continue;
+    try { if (probeInto(c, item.rel)) detailJob.read++; } catch (e) { /* unreadable file */ }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  saveNow();
+  if (!detailJob || !detailJob.running) return;
+
+  // Phase two: who made it. One request for a show, one per film otherwise.
+  detailJob.phase = 'titles';
+  detailJob.done = 0;
+  detailJob.note = 'looking up cast and crew';
+
+  if (series) {
+    detailJob.total = 1;
+    try {
+      if (force || !(c.seriesMeta && c.seriesMeta.info)) await fetchShowInfo(c);
+      if (c.seriesMeta && c.seriesMeta.info) detailJob.found++; else detailJob.failed++;
+    } catch (e) {
+      detailJob.failed++;
+      detailJob.error = 'Could not reach the catalogue.';
+    }
+    detailJob.done = 1;
+  } else {
+    detailJob.total = queue.length;
+    for (const item of queue) {
+      if (!detailJob || !detailJob.running) break;
+      detailJob.done++;
+      const r = rec(c, item.rel);
+      if (!force && r.info) { detailJob.found++; continue; }
+      // A film that has already been looked up for artwork or subtitles knows
+      // its own id; only the ones that do not cost a second request.
+      try {
+        const id = (r.info && r.info.imdb) || await imdbIdFor(item.title);
+        if (!id) { r.info = null; detailJob.failed++; continue; }
+        r.info = await fetchTitleInfo('movie', id);
+        detailJob.found++;
+      } catch (e) {
+        detailJob.failed++;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    saveNow();
+  }
+
+  detailJob.running = false;
+  detailJob.finishedAt = Date.now();
+}
+
+const KB = 1024, MB = KB * 1024, GB = MB * 1024;
+function niceSize(n) {
+  if (!n) return '';
+  if (n >= GB) return (n / GB).toFixed(n >= 10 * GB ? 0 : 1) + ' GB';
+  if (n >= MB) return Math.round(n / MB) + ' MB';
+  return Math.round(n / KB) + ' KB';
+}
+
+// Everything the Details view draws, for one collection. Only what has already
+// been gathered — this never reads a file or the network, so opening the page is
+// instant whether or not you have run a scan.
+function detailsFor(c) {
+  const missing = !c.path || !fs.existsSync(c.path);
+  const queue = missing ? [] : buildQueue(c);
+  const series = !!seriesShape(c);
+  const show = (c.seriesMeta && c.seriesMeta.info) || null;
+
+  const items = queue.map((m) => {
+    const r = rec(c, m.rel);
+    const media = r.media || null;
+    // The pixels are the fact and the label is an opinion about them, so the
+    // label is worked out fresh every time. A cached "576p" would otherwise
+    // outlive the day the bucketing was wrong about 4:3 video.
+    if (media && media.width) media.quality = probe.qualityLabel(media.width, media.height) || media.quality;
+    return {
+      rel: m.rel,
+      title: m.title,
+      file: m.rel.split('/').pop(),
+      season: m.season, episode: m.episode,
+      done: m.done,
+      size: m.size || (media && media.size) || 0,
+      sizeText: niceSize(m.size || (media && media.size) || 0),
+      art: m.art,
+      backdrop: m.backdrop,
+      media: media,
+      info: series ? null : (r.info || null),
+    };
+  });
+
+  // A shelf-level summary: what you actually own, in one line each.
+  const tally = (key, pick) => {
+    const counts = {};
+    for (const it of items) {
+      const v = pick(it);
+      if (!v) continue;
+      counts[v] = (counts[v] || 0) + 1;
+    }
+    return Object.keys(counts)
+      .map((k) => ({ name: k, count: counts[k] }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  };
+
+  const scanned = items.filter((it) => it.media).length;
+  const identified = series ? (show ? items.length : 0) : items.filter((it) => it.info).length;
+  const bytes = items.reduce((n, it) => n + (it.size || 0), 0);
+  const seconds = items.reduce((n, it) => n + ((it.media && it.media.duration) || 0), 0);
+
+  // People, counted across the whole folder. For a show there is one credit
+  // list, so this is really only interesting on a film shelf.
+  const credit = (field) => {
+    const counts = {};
+    for (const it of items) {
+      for (const who of ((it.info && it.info[field]) || [])) counts[who] = (counts[who] || 0) + 1;
+    }
+    return Object.keys(counts).map((k) => ({ name: k, count: counts[k] }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  };
+
+  return {
+    id: c.id, name: c.name, series: series, missing: missing,
+    show: show,
+    items: items,
+    summary: {
+      files: items.length, scanned: scanned, identified: identified,
+      bytes: bytes, bytesText: niceSize(bytes), seconds: Math.round(seconds),
+      quality: tally('quality', (it) => it.media && it.media.quality),
+      video: tally('video', (it) => it.media && it.media.video),
+      container: tally('container', (it) => it.media && it.media.container),
+      source: tally('source', (it) => it.media && it.media.source),
+      genres: (function () {
+        const counts = {};
+        const lists = series
+          ? [(show && show.genres) || []]
+          : items.map((it) => (it.info && it.info.genres) || []);
+        for (const g of lists) for (const name of g) counts[name] = (counts[name] || 0) + 1;
+        return Object.keys(counts).map((k) => ({ name: k, count: counts[k] }))
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      })(),
+      cast: series ? ((show && show.cast) || []).map((n) => ({ name: n, count: 1 })) : credit('cast'),
+      directors: series ? ((show && show.director) || []).map((n) => ({ name: n, count: 1 })) : credit('director'),
+    },
+    job: detailJob && detailJob.collectionId === c.id ? detailJob : null,
+  };
+}
+
 // encodeURIComponent leaves ( ) ' * ! alone, and those break CSS url() when the
 // address is dropped into a background-image. Encode them too.
 function urlPart(s) {
@@ -1540,6 +1708,7 @@ function buildQueue(c) {
     return {
       index: i,
       rel: f.rel,
+      size: f.size,
       title: displayTitle(c, f.rel, series),
       season: ep ? ep.season : null,
       episode: ep ? ep.episode : null,
@@ -2251,6 +2420,28 @@ const server = http.createServer(async (req, res) => {
       }
       play(c, idx, b.extraSeconds);
       return json(res, 200, snapshot(local));
+    }
+
+    if (p === '/api/details') {
+      const c = state.collections.find((x) => x.id === url.searchParams.get('c')) || activeCollection();
+      if (!c) return json(res, 404, { error: 'no collection' });
+      return json(res, 200, detailsFor(c));
+    }
+
+    if (p === '/api/details/scan' && req.method === 'POST') {
+      const body = await readBody(req);
+      const c = state.collections.find((x) => x.id === body.id) || activeCollection();
+      if (!c) return json(res, 404, { error: 'no collection' });
+      if (detailJob && detailJob.running) return json(res, 409, { error: 'a scan is already running' });
+      runDetailJob(c, !!body.force).catch((e) => {
+        if (detailJob) { detailJob.running = false; detailJob.error = String(e.message || e); }
+      });
+      return json(res, 200, { ok: true });
+    }
+
+    if (p === '/api/details/cancel' && req.method === 'POST') {
+      if (detailJob) detailJob.running = false;
+      return json(res, 200, { ok: true });
     }
 
     if (p === '/api/art/fetch' && req.method === 'POST') {

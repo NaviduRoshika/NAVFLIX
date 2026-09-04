@@ -393,6 +393,103 @@
   .blank h2 { font-size: 32px; font-weight: 800; margin: 0 0 10px; letter-spacing: -.8px; }
   .blank p { color: var(--muted); max-width: 480px; margin: 0 auto 26px; }
 
+  /* ---------------------------------------------------------------- details */
+  .dtwrap { padding: 104px 44px 90px; }
+  .dtbar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 22px;
+    background: #101016; border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px;
+  }
+  .dtbar .t { flex: 1; min-width: 220px; }
+  .dtbar .t b { display: block; font-size: 14px; }
+  .dtbar .t span { color: var(--muted); font-size: 12.5px; }
+
+  .dtsum { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 24px; }
+  .dtbox {
+    flex: 1 1 210px; background: #101016; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .dtbox .k {
+    color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; margin-bottom: 9px;
+  }
+  .dtbox .row {
+    display: flex; align-items: center; gap: 10px; font-size: 13px;
+    padding: 4px 6px; margin: 0 -6px; border-radius: 4px; cursor: pointer;
+  }
+  .dtbox .row:hover { background: #1c1c24; }
+  .dtbox .row.on { background: #fff; color: #14141a; }
+  .dtbox .row.on .n { color: #55555f; }
+  .dtbox .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dtbox .row .n { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .dtbox .none { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+  .dtctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
+  .dtctl input[type=text] { width: min(300px, 100%); padding: 8px 12px; }
+  .dtctl select {
+    font: inherit; color: var(--text); background: #0f0f14; border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 10px;
+  }
+  .dtctl .count { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .dtrow {
+    display: flex; gap: 14px; align-items: center; padding: 11px 14px;
+    border: 1px solid var(--line); border-radius: 8px; background: #0e0e13;
+    margin-bottom: 7px; cursor: pointer;
+  }
+  .dtrow:hover { border-color: rgba(255,255,255,.28); background: #131319; }
+  .dtrow.open { border-color: rgba(255,255,255,.28); border-radius: 8px 8px 0 0; margin-bottom: 0; }
+  .dtrow .nm { flex: 1; min-width: 0; }
+  .dtrow .nm b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dtrow .nm span { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dtrow .sz {
+    width: 108px; text-align: right; color: var(--muted); font-size: 12px;
+    font-variant-numeric: tabular-nums; flex: none;
+  }
+  .dttags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: .4px; padding: 3px 8px;
+    border-radius: 4px; background: #1e1e26; color: #c9cedb;
+    border: 1px solid rgba(255,255,255,.1); white-space: nowrap;
+  }
+  .tag.q4k { background: #3a2c07; color: #ffd479; border-color: #5c4711; }
+  .tag.q1080 { background: #0d2f22; color: #7ee0b0; border-color: #1c5540; }
+  .tag.qlow, .tag.warn { background: #2a1416; color: #ff9b90; border-color: #5d2b2b; }
+  .tag.dim { color: var(--muted); }
+
+  .dtmore {
+    border: 1px solid rgba(255,255,255,.28); border-top: 0; border-radius: 0 0 8px 8px;
+    background: #0b0b10; padding: 15px 16px 17px; margin-bottom: 7px;
+  }
+  .dtplot { color: #cfd3dc; font-size: 13.5px; line-height: 1.6; margin: 0 0 14px; max-width: 760px; }
+  .dtgrid { display: grid; gap: 12px 24px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .dtf .k {
+    color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; margin-bottom: 3px;
+  }
+  .dtf .v { font-size: 13.5px; line-height: 1.5; }
+  .dtf .v .none { color: var(--muted); }
+  .dttrk { font-size: 12.5px; color: #c9cedb; padding: 1px 0; }
+  .dttrk .i { color: var(--muted); }
+
+  .dtshow { display: flex; gap: 22px; margin: 0 0 24px; flex-wrap: wrap; }
+  .dtshow .art {
+    width: 148px; aspect-ratio: 2/3; border-radius: 8px; flex: none;
+    background-size: cover; background-position: center; border: 1px solid var(--line);
+  }
+  .dtshow .body { flex: 1; min-width: 260px; }
+  .dtshow h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -.4px; }
+  .dtshow .meta { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+
+  /* Narrow enough and the title and the tags cannot share a line: the title
+     loses, because the tags will not shrink. Give it the whole first line. */
+  @media (max-width: 760px) {
+    .dtwrap { padding-left: 20px; padding-right: 20px; }
+    .dtrow { flex-wrap: wrap; gap: 9px; }
+    .dtrow .nm { flex: 1 0 100%; }
+    .dttags { justify-content: flex-start; flex: 1; }
+    .dtrow .sz { width: auto; }
+  }
+
   /* ---------------------------------------------------------------- dialogs */
   dialog {
     background: #16161c; color: var(--text); border: 1px solid var(--line);
@@ -452,6 +549,7 @@
   <div class="navlink lib" onclick="goLibrary()" title="All your folders">&#9776; Library</div>
   <div class="navlinks" id="tabs"></div>
   <div class="spacer"></div>
+  <button class="mini" id="btnDetails" onclick="goDetails()" title="What is in these files, and who made them" hidden>Details</button>
   <button class="mini" id="btnGuide" onclick="goGuide()" title="How everything works" hidden>? Guide</button>
   <button class="mini" id="btnManage">Manage</button>
   <button class="mini" id="btnSettings">Settings</button>
@@ -763,7 +861,7 @@ function paint() {
   lastSig = sig;
   // The guide is fixed text. Rebuilding it on a poll would only throw away how
   // far the reader had scrolled.
-  if (view === 'guide') return;
+  if (view === 'guide' || view === 'details') return;
   render();
 }
 
@@ -957,6 +1055,360 @@ function goLibrary() {
   showView('library');
 }
 
+/* ---------------------------------------------------------------- details */
+//
+// Everything the app knows about the files themselves: how they were encoded,
+// how big they are, who is in them. The payload is fetched on demand rather
+// than carried on /api/state, because it is large and nothing else wants it.
+
+let D = null;          // the details payload for the collection on screen
+let dQuery = '';       // free-text search
+let dSort = 'order';
+let dFilter = null;    // { kind, value } — set by clicking a line in the summary
+let dOpen = {};        // rel -> row expanded
+let dPoll = null;
+let dLoading = false;
+
+function goDetails() {
+  if (!S || !S.activeId) return;
+  if (D && D.id !== S.activeId) { D = null; dOpen = {}; dQuery = ''; dFilter = null; }
+  view = 'details';
+  pushNav();
+  showView('details');
+  loadDetails();
+}
+
+async function loadDetails() {
+  if (!S || !S.activeId || dLoading) return;
+  dLoading = true;
+  try {
+    D = await api('/api/details?c=' + encodeURIComponent(S.activeId));
+  } catch (e) {
+    toast(e.message);
+    return;
+  } finally {
+    dLoading = false;
+  }
+  if (view !== 'details') return;
+  renderDetails();
+  clearTimeout(dPoll);
+  // A running scan is the only thing that changes this page under you.
+  if (D.job && D.job.running) dPoll = setTimeout(loadDetails, 900);
+}
+
+async function detailsScan(force) {
+  if (force) {
+    const ok = await uiConfirm({
+      title: 'Read everything again?',
+      message: 'Every file header is re-read and every title looked up again. ' +
+        'Nothing is deleted \u2014 use this when files have been replaced or a title was matched wrongly.',
+      confirmLabel: 'Rescan',
+    });
+    if (!ok) return;
+  }
+  try {
+    await post('/api/details/scan', { id: S.activeId, force: !!force });
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  loadDetails();
+}
+
+async function detailsCancel() {
+  try { await post('/api/details/cancel', {}); } catch (e) { /* it may have just finished */ }
+  loadDetails();
+}
+
+function setDFilter(kind, value) {
+  const same = dFilter && dFilter.kind === kind && dFilter.value === value;
+  dFilter = same ? null : { kind: kind, value: value };
+  renderDetails();
+}
+
+/* ------------------------------------------------------------- small formats */
+function qualClass(q) {
+  if (q === '4K') return 'q4k';
+  if (q === '1440p' || q === '1080p') return 'q1080';
+  if (q === '720p') return '';
+  return 'qlow';
+}
+
+// 6 channels is "5.1" everywhere except in the file, where it is a number.
+function chanName(n) {
+  if (n === 8) return '7.1';
+  if (n === 7) return '6.1';
+  if (n === 6) return '5.1';
+  if (n === 2) return 'Stereo';
+  if (n === 1) return 'Mono';
+  return n ? n + 'ch' : '';
+}
+
+function mbps(bits) {
+  if (!bits) return '';
+  return (bits / 1000000).toFixed(bits < 10000000 ? 1 : 0) + ' Mbps';
+}
+
+function audioLabel(a) {
+  return [a.codec, chanName(a.channels), a.lang].filter(Boolean).join(' ');
+}
+
+function subLabel(t) {
+  const bits = [t.lang || 'Untagged', t.codec];
+  if (t.forced) bits.push('forced');
+  if (t.name) bits.push('\u201c' + t.name + '\u201d');
+  return bits.filter(Boolean).join(' \u00b7 ');
+}
+
+// A long list of names reads better as a sentence than as a column.
+function names(list) {
+  return (list && list.length) ? esc(list.join(', ')) : '<span class="none">Not known</span>';
+}
+
+/* ------------------------------------------------------------------ the view */
+function renderDetails() {
+  // Arriving here with nothing loaded is normal: the Back button restores a view
+  // without its data, and a different collection may have been picked since.
+  if (!D || !S || D.id !== S.activeId) {
+    $('#app').innerHTML = '<div class="boot"><div><div class="track"><i></i></div>' +
+      '<div class="msg">Reading what is on the shelf\u2026</div></div></div>';
+    loadDetails();
+    return;
+  }
+
+  const sum = D.summary;
+  const job = D.job;
+  const running = !!(job && job.running);
+
+  let h = '<div class="dtwrap">';
+  h += '<h1 class="libtitle">' + esc(D.name) + '</h1>';
+  h += '<p class="libintro">' + sum.files + ' file' + (sum.files === 1 ? '' : 's') +
+    (sum.bytesText ? ' \u00b7 ' + sum.bytesText : '') +
+    (sum.seconds ? ' \u00b7 ' + mins(sum.seconds) + ' of runtime' : '') + '</p>';
+
+  /* -- the scan bar ------------------------------------------------------- */
+  h += '<div class="dtbar">';
+  if (running) {
+    const pct = job.total > 0 ? Math.min(100, (job.done / job.total) * 100) : 0;
+    h += '<div class="t"><b>' + esc(job.note || 'Working\u2026') + '</b>' +
+      '<span>' + job.done + ' of ' + job.total +
+      (job.phase === 'files' ? ' files read' : ' looked up') + '</span>' +
+      '<div class="track slim" style="width:100%;max-width:340px">' +
+      '<i style="width:' + pct.toFixed(1) + '%;animation:none;transform:none"></i></div></div>' +
+      '<button class="mini danger" onclick="detailsCancel()">Stop</button>';
+  } else {
+    const unscanned = sum.files - sum.scanned;
+    const unknown = D.series ? (D.show ? 0 : 1) : sum.files - sum.identified;
+    let line;
+    if (!sum.files) line = 'Nothing to look at \u2014 this folder has no video files.';
+    else if (unscanned || unknown) {
+      line = [
+        unscanned ? unscanned + ' file' + (unscanned === 1 ? '' : 's') + ' not read yet' : '',
+        unknown ? (D.series ? 'the show is not identified yet' : unknown + ' title' + (unknown === 1 ? '' : 's') + ' without cast or crew') : '',
+      ].filter(Boolean).join(' \u00b7 ');
+    } else line = 'Everything here has been read and identified.';
+
+    h += '<div class="t"><b>' + (unscanned || unknown ? 'Some of this is still unknown' : 'Up to date') + '</b>' +
+      '<span>' + esc(line) + '</span></div>';
+    if (sum.files) {
+      h += '<button class="mini go" onclick="detailsScan(false)">' +
+        (unscanned || unknown ? 'Scan' : 'Scan again') + '</button>';
+      if (sum.scanned) h += '<button class="mini" onclick="detailsScan(true)">Read everything again</button>';
+    }
+  }
+  if (job && job.error) h += '<div style="flex-basis:100%;color:#ff9b90;font-size:12.5px">' + esc(job.error) + '</div>';
+  h += '</div>';
+
+  /* -- the show, for a series --------------------------------------------- */
+  if (D.series && D.show) {
+    const w = D.show;
+    const art = D.items.find((it) => it.art);
+    h += '<div class="dtshow">' +
+      '<div class="art" style="' + (art ? "background-image:url('" + art.art + "')" : 'background-image:' + fakeArt(D.name)) + '"></div>' +
+      '<div class="body"><h2>' + esc(w.name || D.name) + '</h2>' +
+      '<p class="meta">' + [w.year, w.genres.join(', '), w.runtime,
+        w.rating ? '\u2605 ' + w.rating : '', w.country].filter(Boolean).map(esc).join(' \u00b7 ') + '</p>' +
+      (w.description ? '<p class="dtplot">' + esc(w.description) + '</p>' : '') +
+      '<div class="dtgrid">' +
+      '<div class="dtf"><div class="k">Cast</div><div class="v">' + names(w.cast) + '</div></div>' +
+      (w.director.length ? '<div class="dtf"><div class="k">Director</div><div class="v">' + names(w.director) + '</div></div>' : '') +
+      '<div class="dtf"><div class="k">Created by</div><div class="v">' + names(w.writer) + '</div></div>' +
+      (w.awards ? '<div class="dtf"><div class="k">Awards</div><div class="v">' + esc(w.awards) + '</div></div>' : '') +
+      '</div></div></div>';
+  }
+
+  /* -- the shelf, counted ------------------------------------------------- */
+  const box = (title, kind, rows, empty) => {
+    let b = '<div class="dtbox"><div class="k">' + title + '</div>';
+    if (!rows.length) return b + '<div class="none">' + empty + '</div></div>';
+    b += rows.slice(0, 8).map((r) => {
+      const on = dFilter && dFilter.kind === kind && dFilter.value === r.name;
+      return '<div class="row' + (on ? ' on' : '') + '" data-fk="' + kind + '" data-fv="' + esc(r.name) + '">' +
+        '<span class="nm">' + esc(r.name) + '</span><span class="n">' + r.count + '</span></div>';
+    }).join('');
+    if (rows.length > 8) b += '<div class="none" style="margin-top:6px">and ' + (rows.length - 8) + ' more</div>';
+    return b + '</div>';
+  };
+
+  const noScan = 'Press Scan to read the files.';
+  const noNet = 'Press Scan to look these up.';
+  h += '<div class="dtsum">' +
+    box('Quality', 'quality', sum.quality, noScan) +
+    box('Video codec', 'video', sum.video, noScan) +
+    box('Container', 'container', sum.container, noScan) +
+    box('Source', 'source', sum.source, 'Nothing in the filenames says where these came from.') +
+    '</div>';
+
+  if (!D.series) {
+    h += '<div class="dtsum">' +
+      box('Genres', 'genre', sum.genres, noNet) +
+      box('Directors', 'director', sum.directors, noNet) +
+      box('Most seen actors', 'cast', sum.cast, noNet) +
+      '</div>';
+  }
+
+  /* -- the files ---------------------------------------------------------- */
+  const q = dQuery.trim().toLowerCase();
+  const hay = (it) => [it.title, it.file,
+    it.info ? it.info.cast.join(' ') : '', it.info ? it.info.director.join(' ') : '',
+    it.info ? it.info.genres.join(' ') : '', it.media ? it.media.quality : '',
+    it.media ? it.media.video : ''].join(' ').toLowerCase();
+
+  const passes = (it) => {
+    if (q && hay(it).indexOf(q) === -1) return false;
+    if (!dFilter) return true;
+    const f = dFilter, m = it.media, i = it.info;
+    if (f.kind === 'quality') return !!m && m.quality === f.value;
+    if (f.kind === 'video') return !!m && m.video === f.value;
+    if (f.kind === 'container') return !!m && m.container === f.value;
+    if (f.kind === 'source') return !!m && m.source === f.value;
+    if (f.kind === 'genre') return !!i && i.genres.indexOf(f.value) !== -1;
+    if (f.kind === 'director') return !!i && i.director.indexOf(f.value) !== -1;
+    if (f.kind === 'cast') return !!i && i.cast.indexOf(f.value) !== -1;
+    return true;
+  };
+
+  const list = D.items.filter(passes);
+  const rank = (it) => ['SD', '480p', '576p', '720p', '1080p', '1440p', '4K']
+    .indexOf((it.media && it.media.quality) || 'SD');
+  if (dSort === 'name') list.sort((a, b) => a.title.localeCompare(b.title));
+  else if (dSort === 'size') list.sort((a, b) => (b.size || 0) - (a.size || 0));
+  else if (dSort === 'quality') list.sort((a, b) => rank(b) - rank(a) || (b.size || 0) - (a.size || 0));
+  else if (dSort === 'rating') {
+    const r = (it) => (it.info && parseFloat(it.info.rating)) || 0;
+    list.sort((a, b) => r(b) - r(a));
+  }
+
+  h += '<div class="dtctl">' +
+    '<input type="text" id="dtSearch" placeholder="Search titles, actors, directors\u2026" value="' + esc(dQuery) + '">' +
+    '<select id="dtSort">' +
+    [['order', 'In play order'], ['name', 'By name'], ['size', 'Largest first'],
+     ['quality', 'Best quality first'], ['rating', 'Highest rated first']]
+      .map((o) => '<option value="' + o[0] + '"' + (dSort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+    '</select>';
+  if (dFilter) {
+    h += '<button class="chip on" onclick="setDFilter(\'' + dFilter.kind + '\',' +
+      JSON.stringify(dFilter.value).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">' +
+      esc(dFilter.value) + ' \u2715</button>';
+  }
+  h += '<span class="count">' + list.length + ' of ' + D.items.length + '</span></div>';
+
+  if (!list.length) {
+    h += '<div class="libempty">Nothing matches that.</div>';
+  }
+
+  h += list.map((it) => {
+    const m = it.media, i = it.info;
+    const open = !!dOpen[it.rel];
+    const tags = [];
+    if (m) {
+      if (m.quality) tags.push('<span class="tag ' + qualClass(m.quality) + '">' + esc(m.quality) + '</span>');
+      if (m.hdr) tags.push('<span class="tag q4k">' + esc(m.hdr) + '</span>');
+      if (m.video) tags.push('<span class="tag">' + esc(m.video) + '</span>');
+      if (m.audio[0]) tags.push('<span class="tag">' + esc(audioLabel(m.audio[0])) + '</span>');
+      if (m.subs.length) tags.push('<span class="tag dim">' + m.subs.length + ' sub' + (m.subs.length === 1 ? '' : 's') + '</span>');
+      if (m.guessed) tags.push('<span class="tag warn">not read</span>');
+      if (m.misnamed) tags.push('<span class="tag warn">really ' + esc(m.container) + '</span>');
+    } else {
+      tags.push('<span class="tag dim">not scanned</span>');
+    }
+    if (i && i.rating) tags.push('<span class="tag">\u2605 ' + esc(i.rating) + '</span>');
+
+    let row = '<div class="dtrow' + (open ? ' open' : '') + '" data-rel="' + esc(it.rel) + '">' +
+      '<div class="nm"><b>' + esc(it.title) + '</b><span>' + esc(it.file) + '</span></div>' +
+      '<div class="dttags">' + tags.join('') + '</div>' +
+      '<div class="sz">' + esc(it.sizeText) +
+      (m && m.duration ? '<br>' + mins(m.duration) : '') + '</div></div>';
+
+    if (!open) return row;
+
+    let more = '<div class="dtmore">';
+    if (i && i.description) more += '<p class="dtplot">' + esc(i.description) + '</p>';
+    const f = (k, v) => '<div class="dtf"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>';
+    more += '<div class="dtgrid">';
+    if (i) {
+      more += f('Director', names(i.director));
+      more += f('Cast', names(i.cast));
+      more += f('Writer', names(i.writer));
+      more += f('Genres', names(i.genres));
+      if (i.rating) more += f('IMDb', esc(i.rating) + ' \u00b7 ' + esc(i.year || ''));
+      if (i.awards) more += f('Awards', esc(i.awards));
+    }
+    if (m) {
+      more += f('Picture', (m.width ? m.width + '\u00d7' + m.height : '?') +
+        (m.quality ? ' \u00b7 ' + esc(m.quality) : '') + (m.video ? ' \u00b7 ' + esc(m.video) : ''));
+      more += f('File', esc(m.container) + ' \u00b7 ' + esc(it.sizeText) +
+        (m.bitrate ? ' \u00b7 ' + mbps(m.bitrate) : ''));
+      if (m.duration) more += f('Runtime', mins(m.duration) + ' (' + hms(m.duration) + ')');
+      more += f('Audio', m.audio.length
+        ? m.audio.map((a) => '<div class="dttrk">' + esc(audioLabel(a)) + '</div>').join('')
+        : '<span class="none">None</span>');
+      more += f('Subtitles inside the file', m.subs.length
+        ? m.subs.map((t) => '<div class="dttrk">' + esc(subLabel(t)) + '</div>').join('')
+        : '<span class="none">None</span>');
+    }
+    more += '</div>';
+    if (m && m.guessed) {
+      more += '<p class="dtplot" style="margin:12px 0 0;color:var(--muted)">' +
+        'This container is not one NAVFLIX can read, so anything above came from the filename.</p>';
+    }
+    more += '</div>';
+    return row + more;
+  }).join('');
+
+  h += '</div>';
+  $('#app').innerHTML = h;
+
+  // Wiring, after the HTML exists.
+  document.querySelectorAll('.dtrow[data-rel]').forEach((el) => {
+    el.onclick = () => {
+      const rel = el.dataset.rel;
+      dOpen[rel] = !dOpen[rel];
+      const y = scrollY;
+      renderDetails();
+      scrollTo({ top: y, behavior: 'instant' });
+    };
+  });
+  document.querySelectorAll('.dtbox .row[data-fk]').forEach((el) => {
+    el.onclick = () => setDFilter(el.dataset.fk, el.dataset.fv);
+  });
+  const search = $('#dtSearch');
+  if (search) {
+    search.oninput = () => {
+      dQuery = search.value;
+      clearTimeout(search._t);
+      search._t = setTimeout(() => {
+        const at = search.selectionStart;
+        renderDetails();
+        const again = $('#dtSearch');
+        if (again) { again.focus(); again.setSelectionRange(at, at); }
+      }, 200);
+    };
+  }
+  const sort = $('#dtSort');
+  if (sort) sort.onchange = () => { dSort = sort.value; renderDetails(); };
+}
+
 /* ---------------------------------------------------------------- the guide */
 
 const GUIDE = [
@@ -1045,6 +1497,16 @@ const GUIDE = [
     ['Your own file', 'Drop <code>FilmName.srt</code> beside the video and it is found automatically.'],
   ]],
 
+  ['details', 'What is in your files', [
+    ['The Details page', 'The <b>Details</b> button in the top bar opens a breakdown of the collection you have open: what each file actually is, and who made it. Press <b>Scan</b> once and it is remembered.'],
+    ['Read from the file, not the name', 'A release called <code>1080p</code> is quite often not. NAVFLIX reads the picture size, codecs, audio and subtitle tracks and true runtime out of the container header itself, so <i>1080p</i> here means the frame really is that size. No ffmpeg is involved.'],
+    ['Cast and crew', 'The same scan looks each title up and keeps the director, writer, cast, genres, IMDb rating and plot. A show is one lookup for the whole folder; a film shelf is one per film, which takes about a minute for a hundred films.'],
+    ['Counting the shelf', 'The boxes across the top tally the whole folder — how much of it is 4K, how much is H.265, which directors and actors come up most. <b>Click any line to filter</b> the list below it, and click it again to clear.'],
+    ['Looking something up', 'The search box matches titles, filenames, actors, directors and genres at once, so <i>dicaprio</i> finds his films wherever they sit in the folder. Click any row to open everything known about it.'],
+    ['What it costs', 'Reading the headers is local and needs no internet; it takes roughly a minute for eight hundred files on an external drive. Only the cast and crew half goes online. Nothing is scanned until you press the button.'],
+    ['Formats it can read', 'Matroska (<code>.mkv</code>, <code>.webm</code>) and MP4 (<code>.mp4</code>, <code>.m4v</code>, <code>.mov</code>) — which is nearly everything. Anything else falls back to what the filename claims and is labelled <b>not read</b> so you know the difference. Files are identified by their contents, so an MP4 misnamed <code>.mkv</code> is still read correctly and says so.'],
+  ]],
+
   ['keep', 'Where things are kept', [
     ['Your progress', '<code>data/state.json</code> holds every collection, position and watch log. ' +
       'Back it up and your marathons survive a reinstall.'],
@@ -1063,8 +1525,7 @@ const GUIDE = [
       '<code>10</code>) and it sorts as you expect. Shows use season and episode numbers instead, so their ' +
       'filenames can be inconsistent.'],
     ['A film is missing', 'Files under 20 MB are skipped, so samples and featurettes stay out of the queue.'],
-    ['Runtime shows as unknown', 'VLC reports it, so it appears after the first time a title plays. ' +
-      'The part strip arrives then too.'],
+    ['Runtime shows as unknown', 'VLC reports it the first time a title plays. To fill it in for a whole folder without playing anything, open <b>Details</b> and press <b>Scan</b> — the runtime is written in the file itself, and reading it brings the part strip along with it.'],
     ['Nothing happens on Play', 'Check the VLC path in Settings. On macOS it must point inside the bundle: ' +
       '<code>VLC.app/Contents/MacOS/VLC</code>.'],
   ]],
@@ -1134,6 +1595,9 @@ function renderTabs() {
   // The guide is a Library thing; it only clutters the bar while watching.
   const gb = $('#btnGuide');
   if (gb) gb.hidden = (view !== 'library');
+  // Details is about one collection, so it only means anything inside one.
+  const db = $('#btnDetails');
+  if (db) db.hidden = !(S && S.activeId) || view === 'library' || view === 'guide';
 
   const t = $('#tabs');
   if (!S || !S.collections.length) { t.innerHTML = ''; return; }
@@ -1234,6 +1698,7 @@ function render() {
   const railScroll = {};
   document.querySelectorAll('.rail').forEach((r) => { railScroll[r.id] = r.scrollLeft; });
 
+  if (view === 'details') return renderDetails();
   if (view === 'guide') return renderGuide();
   if (view === 'library' && S.collections.length) return renderLibrary();
 

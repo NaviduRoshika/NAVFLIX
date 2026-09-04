@@ -22,13 +22,15 @@ function bad(msg, err) {
   if (err) console.log('      ' + String(err.message || err).split('\n')[0]);
 }
 
-// --- server.js -------------------------------------------------------------
-try {
-  new vm.Script(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'), { filename: 'server.js' });
-  ok('server.js parses');
-} catch (e) {
-  bad('server.js has a syntax error', e);
-}
+// --- the modules -----------------------------------------------------------
+['server.js', 'probe.js', 'qr.js'].forEach((file) => {
+  try {
+    new vm.Script(fs.readFileSync(path.join(ROOT, file), 'utf8'), { filename: file });
+    ok(file + ' parses');
+  } catch (e) {
+    bad(file + ' has a syntax error', e);
+  }
+});
 
 // --- inline scripts in the pages ------------------------------------------
 function checkPage(rel) {

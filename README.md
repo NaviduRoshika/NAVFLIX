@@ -11,6 +11,10 @@ ration: when it stops, press Play again and you get another one. The point is to
 break a two-hour film into pieces you can actually fit in, not to police how many
 you watch.
 
+It also knows what is on the shelf: [**Details**](#details) reads the real
+resolution, codecs and tracks out of each file, and looks up the cast, director
+and rating for every title.
+
 ## Collections
 
 You can track several marathons at once — MCU in one folder, DC in another. Add a
@@ -160,6 +164,59 @@ When it runs out of places to go it **settles on the Library** rather than
 leaving the page. Back walking out of a dashboard you keep open all evening
 reads as the app quitting, so there is a permanent floor entry underneath the
 session that Back can never step off. Close the tab to actually leave.
+
+## Details
+
+The **Details** button in the top bar opens a breakdown of the collection you
+have open: what each file actually is, and who made it. Press **Scan** once and
+it is remembered; nothing is read until you do.
+
+### Read from the file, not from its name
+
+A release called `1080p` quite often is not. NAVFLIX opens the container header
+and reads the real picture size, the video and audio codecs, every subtitle
+track and the true runtime. No ffmpeg, no ffprobe, no npm — Matroska writes its
+stream table as nested EBML elements and MP4 writes it as nested atoms, and
+`probe.js` walks both.
+
+Two things fall out of doing it this way:
+
+* **The label is honest.** *1080p* here means the frame really is that size.
+  Resolution is bucketed on whichever of width or height is larger at 16:9, so a
+  film letterboxed to 1920x800 is 1080p and 4:3 animation at 960x720 is 720p —
+  going by either dimension alone gets one of those two wrong.
+* **The extension is not trusted.** Files are identified by their first bytes.
+  An MP4 named `.mkv` is read correctly and labelled *really MP4*.
+
+Matroska (`.mkv`, `.webm`) and MP4 (`.mp4`, `.m4v`, `.mov`) cover nearly
+everything. Anything else falls back to what the filename claims and is marked
+**not read**, so a guess never looks like a measurement.
+
+Reading the headers takes roughly a minute for eight hundred files on an
+external drive, and is entirely local.
+
+### Cast and crew
+
+The same scan looks each title up on the free Cinemeta catalogue and keeps the
+director, writer, cast, genres, IMDb rating, awards and plot. A show is one
+lookup for the whole folder. A film shelf is one per film, which is about a
+minute for a hundred films. This half is the only part that goes online.
+
+Cinemeta returns the top three billed actors per title, not a full cast list.
+
+### Counting the shelf
+
+The boxes across the top tally the whole folder — how much of it is 4K, how much
+is H.265, which directors and actors come up most often. Click any line to
+filter the list below it; click it again to clear. The search box matches
+titles, filenames, actors, directors and genres at once, so *dicaprio* finds his
+films wherever they sit in the folder.
+
+### A side effect worth knowing
+
+Runtime used to appear only after VLC had played a title once. The container
+knows it already, so a scan fills it in for everything — which brings the part
+strip and the "1h 45m" labels along with it, before you have played anything.
 
 ## Artwork
 
@@ -377,7 +434,9 @@ reports them.
 ## Where state lives
 
 `data/state.json` — the VLC path, whether to open a window on startup, and for
-every collection its progress per file and its watch log. Back it up and your marathons survive a reinstall.
+every collection its progress per file and its watch log. Once you have run a
+Details scan it also holds what was read out of each file and the cast and crew
+for each title, which adds roughly a megabyte for a library of eight hundred. Back it up and your marathons survive a reinstall.
 Settings → **Erase this collection's progress** resets one without touching the
 others.
 
@@ -400,6 +459,7 @@ length, positions, and history. Nothing is lost and no action is needed.
 | `public/icon-*.png` | App and tab icons |
 | `check.js` | `npm run check` — syntax-checks the pages before you start |
 | `qr.js` | QR encoder for the pairing code; no dependencies |
+| `probe.js` | Reads resolution, codecs and tracks out of MKV and MP4 headers; no dependencies |
 | `package.json` | Lets you run `npm start`; no dependencies |
 | `data/state.json` | Your progress (created on first run) |
 
