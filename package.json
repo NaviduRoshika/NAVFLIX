@@ -1,0 +1,14 @@
+{
+  "name": "navflix",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Watch a folder of movies as a series, one timed episode a day.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node check.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

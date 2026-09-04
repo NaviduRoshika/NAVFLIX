@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NAVFLIX Remote</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="theme-color" content="#0a0a0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NAVFLIX">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --panel: #16161c;
+    --line: #2b2b34;
+    --text: #f3f3f5;
+    --muted: #9aa0ae;
+    --red: #e11d29;
+    --red-hi: #f6212f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 18px 16px 40px; }
+
+  .brand {
+    color: var(--red); font-weight: 900; letter-spacing: -.5px; font-size: 20px;
+    text-align: center; margin: 6px 0 18px;
+  }
+
+  /* A back arrow, a title, and nothing else. Anything more is a website. */
+  .topbar { display: flex; align-items: center; gap: 10px; margin: 2px 0 16px; }
+  .topbar .bt { flex: 1; text-align: center; font-weight: 800; font-size: 17px; }
+  .ico {
+    width: 42px; height: 42px; flex: none; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    font-size: 22px; line-height: 1; display: grid; place-items: center;
+    padding: 0; min-height: 0;
+  }
+  .ico.blank { background: none; border-color: transparent; }
+
+  /* ---- pairing ---- */
+  .pair { text-align: center; padding-top: 12vh; }
+  .pair h1 { font-size: 22px; margin: 0 0 6px; }
+  .pair p { color: var(--muted); margin: 0 0 26px; font-size: 14px; }
+  #pin {
+    width: 100%; font-size: 30px; text-align: center; letter-spacing: 10px;
+    padding: 14px 10px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--text); font-family: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  #pin:focus { outline: none; border-color: var(--red); }
+
+  /* ---- now playing ---- */
+  .art {
+    width: 100%; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden;
+    background: #1c1c22 center/cover no-repeat;
+    border: 1px solid var(--line); margin-bottom: 16px;
+  }
+  h1.title { font-size: 21px; font-weight: 800; margin: 0 0 4px; line-height: 1.25; }
+  .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 14px; }
+
+  .bar { height: 5px; border-radius: 99px; background: #2a2a33; overflow: hidden; margin: 4px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--red); transition: width .4s linear; }
+  .times { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px;
+           font-variant-numeric: tabular-nums; margin-bottom: 20px; }
+
+  /* Big targets: this gets used in the dark, one-handed. */
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
+  button {
+    font: inherit; font-weight: 700; color: var(--text); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 10px; flex: 1; min-height: 58px;
+  }
+  button:active { background: #22222b; transform: scale(.98); }
+  button:disabled { opacity: .35; }
+  button.primary { background: var(--red); border-color: var(--red); }
+  button.primary:active { background: var(--red-hi); }
+  button.wide { flex: 2; }
+
+  /* ---- lists ---- */
+  .lrow {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    padding: 13px 14px; margin-bottom: 8px; min-height: 0; font-weight: 600;
+  }
+  .lrow .n {
+    flex: none; width: 30px; color: var(--muted); font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .lrow .t { flex: 1; min-width: 0; }
+  .lrow .t b { display: block; font-weight: 700; font-size: 15px; }
+  .lrow .t span { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .lrow .g { flex: none; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .lrow.on { border-color: var(--red); }
+  .lrow.done .t b { color: var(--muted); }
+  .lrow.now { border-color: var(--red); background: #241215; }
+
+  .shead {
+    color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .8px;
+    text-transform: uppercase; margin: 18px 0 8px; padding-left: 2px;
+  }
+  .shead:first-child { margin-top: 4px; }
+
+  .status {
+    text-align: center; color: var(--muted); font-size: 13px; margin: 18px 0 0;
+    min-height: 20px;
+  }
+  .err { color: #ff9b90; }
+  .live { color: var(--red); font-weight: 700; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px; }
+  .small { background: none; border: 0; color: var(--muted); font-weight: 600;
+           font-size: 13px; padding: 10px; min-height: 0; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+'use strict';
+
+const $ = (q) => document.querySelector(q);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let token = '';
+try { token = localStorage.getItem('navflix-remote-token') || ''; } catch (e) { token = ''; }
+
+let S = null;
+let msg = '';
+let msgBad = false;
+let timer = null;
+
+// 'now' is the handset. The other two are for finding something to put on it.
+let view = 'now';
+
+// Which title the Now screen is pointed at, per collection. Tapping a row in a
+// list only sets this — the big red button is what actually starts playback,
+// the same rule the desktop cards follow.
+let chosen = {};
+
+function hms(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
+}
+
+function mins(sec) {
+  const m = Math.round((sec || 0) / 60);
+  if (m < 60) return m + 'm';
+  return Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+}
+
+async function call(path, body) {
+  const opt = {
+    method: body ? 'POST' : 'GET',
+    headers: token ? { Authorization: 'Bearer ' + token } : {},
+  };
+  if (body) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opt);
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) {           // token rejected: fall back to pairing
+    token = '';
+    try { localStorage.removeItem('navflix-remote-token'); } catch (e) {}
+    throw new Error(d.error || 'Pair this device first.');
+  }
+  if (!r.ok) throw new Error(d.error || 'Something went wrong.');
+  return d;
+}
+
+/* ------------------------------------------------------------------ pairing */
+
+function renderPair() {
+  $('#app').innerHTML =
+    '<div class="brand">NAVFLIX</div>' +
+    '<div class="pair">' +
+      '<h1>Pair this phone</h1>' +
+      '<p>Type the six digit code shown in the NAVFLIX console on your PC.</p>' +
+      '<input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+        'autocomplete="one-time-code" placeholder="000000">' +
+      '<div class="row" style="margin-top:16px">' +
+        '<button class="primary" id="btnPair">Pair</button>' +
+      '</div>' +
+      '<div class="status ' + (msgBad ? 'err' : '') + '">' + esc(msg) + '</div>' +
+    '</div>';
+
+  const input = $('#pin');
+  input.focus();
+  const go = async () => {
+    const pin = input.value.trim();
+    if (pin.length !== 6) { msg = 'Six digits, please.'; msgBad = true; return renderPair(); }
+    try {
+      const d = await call('/api/remote/pair', { pin: pin });
+      token = d.token;
+      try { localStorage.setItem('navflix-remote-token', token); } catch (e) {}
+      msg = ''; msgBad = false;
+      start();
+    } catch (e) {
+      msg = e.message; msgBad = true;
+      renderPair();
+    }
+  };
+  $('#btnPair').onclick = go;
+  input.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+
+/* -------------------------------------------------------------------- parts */
+
+function topbar(title, back) {
+  return '<div class="topbar">' +
+    (back ? '<button class="ico" id="back">&#8249;</button>' : '<span class="ico blank"></span>') +
+    '<div class="bt">' + esc(title) + '</div>' +
+    '<span class="ico blank"></span>' +
+  '</div>';
+}
+
+function statusOf(m) {
+  if (m.done) return 'Finished';
+  if (m.position > 0 && m.duration > 0) return mins(m.duration - m.position) + ' left';
+  if (m.duration > 0) return mins(m.duration);
+  return 'Not started';
+}
+
+function go(v) { view = v; render(); }
+
+/* ------------------------------------------------------------ the collections */
+
+function renderCollections() {
+  const rows = S.collections.map((c) => {
+    const tag = c.missing ? 'missing'
+      : (c.series ? 'series' : c.total + (c.total === 1 ? ' film' : ' films'));
+    return '<button class="lrow' + (c.id === S.activeId ? ' on' : '') + '" data-cid="' + esc(c.id) + '">' +
+      '<div class="t"><b>' + esc(c.name) + '</b>' +
+        '<span>' + esc(tag) + (c.total ? ' &middot; ' + c.done + ' of ' + c.total + ' watched' : '') + '</span>' +
+      '</div>' +
+      (c.playing ? '<div class="g live">NOW</div>' : '<div class="g">&#8250;</div>') +
+    '</button>';
+  }).join('');
+
+  $('#app').innerHTML =
+    topbar('Collections', true) + rows +
+    '<div class="status ' + (msgBad ? 'err' : '') + '">' + esc(msg) + '</div>';
+
+  $('#back').onclick = () => go('now');
+  document.querySelectorAll('.lrow[data-cid]').forEach((el) => {
+    el.onclick = async () => {
+      // Switching here switches the PC too, so the two stay in step.
+      await act('/api/collections/select', { id: el.dataset.cid }, 'items');
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ the queue */
+
+function renderItems() {
+  const A = S.active;
+  if (!A) return go('collections');
+
+  const P = S.playing;
+  const playingIndex = (P && P.collectionId === A.id) ? P.index : -1;
+  const pick = chosen[A.id];
+
+  let html = '';
+  let lastSeason = null;
+  A.queue.forEach((m) => {
+    if (m.season != null && m.season !== lastSeason) {
+      lastSeason = m.season;
+      html += '<div class="shead">Season ' + m.season + '</div>';
+    }
+    const cls = 'lrow' + (m.done ? ' done' : '') +
+      (m.index === playingIndex ? ' now' : (m.index === pick ? ' on' : ''));
+    html += '<button class="' + cls + '" data-i="' + m.index + '">' +
+      '<div class="n">' + (m.index + 1) + '</div>' +
+      '<div class="t"><b>' + esc(m.title) + '</b><span>' + statusOf(m) + '</span></div>' +
+      (m.index === playingIndex ? '<div class="g live">NOW</div>'
+        : (m.done ? '<div class="g">&#10003;</div>' : '')) +
+    '</button>';
+  });
+
+  if (!A.queue.length) {
+    html = '<div class="pair"><p>Nothing playable in this folder.</p></div>';
+  }
+
+  $('#app').innerHTML =
+    topbar(A.name, true) + html +
+    '<div class="status ' + (msgBad ? 'err' : '') + '">' + esc(msg) + '</div>';
+
+  $('#back').onclick = () => go('collections');
+  document.querySelectorAll('.lrow[data-i]').forEach((el) => {
+    el.onclick = () => {
+      // Select, do not play. Two deliberate taps beats starting a film by accident.
+      chosen[A.id] = Number(el.dataset.i);
+      go('now');
+    };
+  });
+}
+
+/* -------------------------------------------------------------------- the now */
+
+function renderNow() {
+  const A = S && S.active;
+  const P = S && S.playing;
+
+  if (!A) {
+    $('#app').innerHTML = '<div class="brand">NAVFLIX</div>' +
+      '<div class="pair"><h1>Nothing selected</h1>' +
+      '<p>Pick a collection on the PC, or browse below.</p>' +
+      '<div class="row"><button id="browse">Browse collections</button></div></div>';
+    const b = $('#browse');
+    if (b) b.onclick = () => go('collections');
+    return;
+  }
+
+  // Whatever is on the television wins. Otherwise it is whatever you picked in
+  // the list, and failing that the next unwatched thing.
+  const playing = P && P.collectionId === A.id;
+  const pick = chosen[A.id];
+  const idx = playing ? P.index : (pick != null && A.queue[pick] ? pick : A.currentIndex);
+  const item = A.queue[idx];
+
+  if (!item) {
+    $('#app').innerHTML = '<div class="brand">NAVFLIX</div>' +
+      '<div class="pair"><h1>' + esc(A.name) + '</h1><p>Everything here is watched.</p>' +
+      '<div class="row"><button id="browse">Browse collections</button></div></div>';
+    const b = $('#browse');
+    if (b) b.onclick = () => go('collections');
+    return;
+  }
+
+  const pos = playing ? P.time : item.position;
+  const dur = playing ? (P.length || item.duration) : item.duration;
+  const pct = dur > 0 ? Math.min(100, (pos / dur) * 100) : 0;
+  const paused = playing && P.vlcState === 'paused';
+
+  let sub;
+  if (playing) sub = paused ? 'Paused' : 'Playing now';
+  else if (item.done) sub = 'Watched';
+  else if (item.position > 0) sub = 'Resumes at ' + hms(item.position);
+  else sub = 'Not started';
+  sub += ' · ' + esc(A.name);
+
+  $('#app').innerHTML =
+    '<div class="brand">NAVFLIX</div>' +
+    '<div class="art" style="' + (item.art || item.backdrop
+      ? "background-image:url('" + (item.backdrop || item.art) + (token ? '&t=' + token : '') + "')"
+      : '') + '"></div>' +
+    '<h1 class="title">' + esc(item.title) + '</h1>' +
+    '<div class="sub' + (playing && !paused ? ' live' : '') + '">' + sub + '</div>' +
+    '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+    '<div class="times"><span>' + hms(pos) + '</span><span>' +
+      (dur > 0 ? hms(dur) : 'unknown') + '</span></div>' +
+
+    (playing
+      ? '<div class="row">' +
+          '<button id="back30">&#8630; 30s</button>' +
+          '<button class="primary wide" id="pause">' + (paused ? '&#9654; Resume' : '&#10074;&#10074; Pause') + '</button>' +
+          '<button id="fwd30">30s &#8631;</button>' +
+        '</div>' +
+        '<div class="row"><button id="stop">&#9632; Stop</button></div>'
+      : '<div class="row">' +
+          '<button class="primary wide" id="play">&#9654; ' +
+            (item.done ? 'Watch again'
+              : (A.fullMode ? 'Play' : (item.position > 0 ? 'Next ' : 'Play ') + mins(A.sittingLength))) + '</button>' +
+        '</div>' +
+        '<div class="row">' +
+          '<button id="browse">&#9776; Browse</button>' +
+          (item.done ? '' : '<button id="skip">&#10005; Skip</button>') +
+        '</div>') +
+
+    '<div class="status ' + (msgBad ? 'err' : '') + '">' + esc(msg) + '</div>' +
+    '<hr>' +
+    '<div class="row"><button class="small" id="unpair">Unpair this phone</button></div>';
+
+  const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
+  on('pause', () => act('/api/vlc/pause'));
+  on('back30', () => act('/api/vlc/seek', { delta: -30 }));
+  on('fwd30', () => act('/api/vlc/seek', { delta: 30 }));
+  on('stop', () => act('/api/stop'));
+  on('browse', () => go('collections'));
+  on('play', async () => {
+    // A watched title needs rewinding first, or it would finish instantly.
+    if (item.done) await act('/api/mark', { index: item.index, rewind: true });
+    await act('/api/play', { index: item.index });
+  });
+  on('skip', async () => {
+    await act('/api/mark', { index: item.index, done: true });
+    // The pick is spent; fall back to whatever is next.
+    delete chosen[A.id];
+    render();
+  });
+  on('unpair', async () => {
+    // Tell the PC to forget the token before dropping our copy of it.
+    try { await call('/api/remote/unpair', {}); } catch (e) { /* going anyway */ }
+    token = '';
+    try { localStorage.removeItem('navflix-remote-token'); } catch (e) {}
+    clearInterval(timer);
+    msg = ''; msgBad = false;
+    renderPair();
+  });
+}
+
+function render() {
+  if (!S) return;
+  if (view === 'collections') return renderCollections();
+  if (view === 'items') return renderItems();
+  renderNow();
+}
+
+async function act(path, body, thenView) {
+  document.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  try {
+    S = await call(path, body || {});
+    msg = ''; msgBad = false;
+    if (thenView) view = thenView;
+    render();
+  } catch (e) {
+    msg = e.message; msgBad = true;
+    if (!token) { clearInterval(timer); return renderPair(); }
+    render();
+  }
+}
+
+async function refresh() {
+  try {
+    S = await call('/api/state');
+    if (msgBad) { msg = ''; msgBad = false; }
+    render();
+  } catch (e) {
+    if (!token) { clearInterval(timer); msg = e.message; msgBad = true; return renderPair(); }
+    msg = 'Lost the PC. Retrying.'; msgBad = true;
+    render();
+  }
+}
+
+function start() {
+  clearInterval(timer);
+  refresh();
+  // Slower than the desktop poll: this is somebody's phone battery.
+  timer = setInterval(refresh, 4000);
+}
+
+if (token) start(); else renderPair();
+</script>
+</body>
+</html>

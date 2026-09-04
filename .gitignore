@@ -1,0 +1,33 @@
+# Your watching, not the app.
+#
+# data/ holds state.json — every collection path, every position, your whole
+# watch history, the phone remote's pairing code and its issued tokens, and your
+# TMDB key if you set one. None of that belongs in a public repository.
+data/
+
+# Downloaded artwork and subtitles are other people's copyrighted material,
+# cached locally for your own use. They are re-fetchable, so they are not worth
+# carrying and not ours to redistribute.
+data/art/
+data/subs/
+
+# Bundled Node and VLC binaries, plus the archives they came from. Hundreds of
+# megabytes, and everyone should fetch them from the official upstreams anyway.
+runtime/
+
+# Editor and tooling scratch
+.claude/
+.vscode/
+.idea/
+node_modules/
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and stray archives
+*.log
+*.zip
+*.tar.xz
+*.bak
