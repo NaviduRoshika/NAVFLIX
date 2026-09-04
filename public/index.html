@@ -994,7 +994,7 @@ const GUIDE = [
     ['Clicking a poster', 'Selects it: the billboard moves to that title. It does <b>not</b> start playing, ' +
       'and the page stays where it is so you can keep browsing.'],
     ['Play one directly', 'Hover a poster and use the <b>▶</b> button on it.'],
-    ['Poster buttons', '<b>▶</b> play now · <b>↻</b> restart from zero · <b>✕</b> skip (mark watched) · ' +
+    ['Poster buttons', '<b>▶</b> play now · <b>↻</b> restart from zero · <b>✓</b> mark as watched · ' +
       '<b>↝</b> mark unwatched.'],
     ['Watched titles', 'Still clickable. The billboard shows <b>WATCHED</b> and offers ' +
       '<b>Watch again from the start</b>.'],
@@ -1175,8 +1175,8 @@ function card(m, opts) {
         '<div class="hoverbar">' +
           (S.playing ? '' : '<button class="icon-btn" title="Play this film now" onclick="event.stopPropagation();play(' + m.index + ')">&#9654;</button>') +
           '<button class="icon-btn" title="Restart from the beginning" onclick="event.stopPropagation();mark(' + m.index + ',{rewind:true})">&#8635;</button>' +
-          '<button class="icon-btn" title="' + (m.done ? 'Mark as unwatched' : 'Skip this film') + '" onclick="event.stopPropagation();mark(' + m.index + ',{done:' + (!m.done) + '})">' +
-            (m.done ? '&#8630;' : '&#10005;') + '</button>' +
+          '<button class="icon-btn" title="' + (m.done ? 'Mark as unwatched' : 'Mark as watched') + '" onclick="event.stopPropagation();mark(' + m.index + ',{done:' + (!m.done) + '})">' +
+            (m.done ? '&#8630;' : '&#10003;') + '</button>' +
         '</div>' +
       '</div>' +
       (pct > 0 ? '<div class="cbar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' : '') +
