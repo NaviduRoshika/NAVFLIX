@@ -996,6 +996,7 @@ const GUIDE = [
     ['Play one directly', 'Hover a poster and use the <b>▶</b> button on it.'],
     ['Poster buttons', '<b>▶</b> play now · <b>↻</b> restart from zero · <b>✓</b> mark as watched · ' +
       '<b>↝</b> mark unwatched.'],
+    ['Marking without watching', 'Seen it already, or watched it somewhere else? <b>✓ Mark as watched</b> on the billboard or on any card records it as done and moves the queue on. The same button on a watched title puts it back.'],
     ['Watched titles', 'Still clickable. The billboard shows <b>WATCHED</b> and offers ' +
       '<b>Watch again from the start</b>.'],
   ]],
@@ -1380,7 +1381,7 @@ function render() {
         (S.tmdbKey ? 'TMDB' : 'the free Cinemeta catalogue') + ' and caches the poster and backdrop on disk">' +
         '&#127912;&nbsp; Get artwork (' + missing + ')</button>';
     }
-    // Restart and Skip also live on every poster, but only on hover — keep them
+    // Restart and Mark as watched also live on every poster, but only on hover —
     // plainly visible for the film you are actually up to.
     if (!P && hero.done) {
       html += '<button class="btn btn-ghost" title="Put it back in the queue without rewinding" ' +
@@ -1389,8 +1390,8 @@ function render() {
       if (hero.position > 0) {
         html += '<button class="btn btn-ghost" onclick="mark(' + hero.index + ',{rewind:true})">&#8635;&nbsp; Restart film</button>';
       }
-      html += '<button class="btn btn-ghost" title="Mark it watched and move to the next film" ' +
-        'onclick="mark(' + hero.index + ',{done:true})">&#10005;&nbsp; Skip film</button>';
+      html += '<button class="btn btn-ghost" title="Mark it watched and move on to the next one" ' +
+        'onclick="mark(' + hero.index + ',{done:true})">&#10003;&nbsp; Mark as watched</button>';
     }
     html += '</div>';                       // .actions
 

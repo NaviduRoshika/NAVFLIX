@@ -349,9 +349,9 @@ reports them.
   `10`) and the order is exactly what you'd expect. Rename files to reorder.
 - Subfolders are scanned up to 4 levels deep.
 - Files under 20 MB are skipped, so `sample.mkv` and featurettes don't join the queue.
-- On the billboard, **Skip** drops a film from the run. On a card the same
-  action is spelled **✓ Mark as watched**, since that is what it does.
-  **Restart** rewinds one to zero.
+- **✓ Mark as watched** records a title as done and moves the queue on, on the
+  billboard and on every card. Pressing it on something already watched puts it
+  back. **Restart** rewinds one to zero.
 - **Play** on any row jumps the queue without losing anyone's position.
 - When a sitting ends the button reads *Next 40m* (or whatever you set). Press it
   as many times as you like — nothing stops you at a daily total.
