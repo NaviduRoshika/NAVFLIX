@@ -163,15 +163,41 @@ function newPin() {
 
 // Every non-loopback IPv4 the machine answers on, so the console can print
 // an address the phone can actually reach.
+// Not every address this machine holds is one your phone can reach, and the
+// order the OS lists them in means nothing. Two kinds are worse than useless:
+//
+//   - a /32 netmask, which is a point-to-point link with no network behind it.
+//     Corporate VPN clients hand these out; a Fortinet adapter sitting on
+//     10.x with mask 255.255.255.255 looks like a LAN address and is not.
+//   - 169.254.x.x, which is what an interface assigns itself when no DHCP
+//     server ever answered. Unplugged ports and idle Bluetooth adapters.
+//
+// What survives is ranked so the likeliest home network leads, because the
+// first address is the one the QR code encodes.
+const VIRTUAL_IFACE = /(vpn|virtual|vmware|virtualbox|hyper-?v|vethernet|tailscale|wireguard|tap-|bluetooth|docker)/i;
+
+function addressRank(entry) {
+  let score = 0;
+  if (entry.address.startsWith('192.168.')) score += 30;
+  else if (/^172\.(1[6-9]|2\d|3[01])\./.test(entry.address)) score += 20;
+  else if (entry.address.startsWith('10.')) score += 10;
+  if (VIRTUAL_IFACE.test(entry.name)) score -= 25;
+  return score;
+}
+
 function lanAddresses() {
-  const out = [];
+  const found = [];
   const ifaces = os.networkInterfaces();
   for (const name of Object.keys(ifaces)) {
     for (const a of ifaces[name] || []) {
-      if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+      if (a.family !== 'IPv4' || a.internal) continue;
+      if (a.netmask === '255.255.255.255') continue;   // nothing is behind a /32
+      if (a.address.startsWith('169.254.')) continue;  // DHCP never answered
+      found.push({ address: a.address, name: name });
     }
   }
-  return out;
+  found.sort((x, y) => addressRank(y) - addressRank(x));
+  return found.map((f) => f.address);
 }
 
 // Bring one collection into the shape the running app expects: absolute native
