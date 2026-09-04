@@ -132,6 +132,13 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
 let token = '';
 try { token = localStorage.getItem('navflix-remote-token') || ''; } catch (e) { token = ''; }
 
+// A scanned QR arrives as .../remote#123456. The fragment never leaves the
+// phone, so the code is not sent anywhere until we deliberately post it.
+function codeFromLink() {
+  const m = (location.hash || '').match(/^#(\d{6})$/);
+  return m ? m[1] : '';
+}
+
 let S = null;
 let msg = '';
 let msgBad = false;
@@ -195,6 +202,9 @@ function renderPair() {
     '</div>';
 
   const input = $('#pin');
+  // Prefill from a scanned link so the code is already there to confirm.
+  const fromLink = codeFromLink();
+  if (fromLink) input.value = fromLink;
   input.focus();
   const go = async () => {
     const pin = input.value.trim();
@@ -449,7 +459,26 @@ function start() {
   timer = setInterval(refresh, 4000);
 }
 
-if (token) start(); else renderPair();
+// Scanned in? Pair without making anyone retype what the camera just read.
+async function boot() {
+  if (token) return start();
+  const code = codeFromLink();
+  if (code) {
+    try {
+      const d = await call('/api/remote/pair', { pin: code });
+      token = d.token;
+      try { localStorage.setItem('navflix-remote-token', token); } catch (e) {}
+      // Drop the code out of the address bar and the history entry with it.
+      history.replaceState(null, '', location.pathname);
+      return start();
+    } catch (e) {
+      msg = e.message; msgBad = true;
+    }
+  }
+  renderPair();
+}
+
+boot();
 </script>
 </body>
 </html>

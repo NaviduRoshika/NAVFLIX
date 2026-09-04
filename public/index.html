@@ -95,6 +95,9 @@
   .rbox .v.pin { letter-spacing: 5px; font-size: 22px; }
   .rbox .v + .v { margin-top: 6px; }
   .rbox .mini { margin-top: 9px; padding: 4px 9px; font-size: 12px; }
+  .rbox.qr { flex: 0 0 auto; display: grid; place-items: center; padding: 10px; }
+  .rbox.qr img { display: block; width: 150px; height: 150px; border-radius: 4px; }
+  .rbox.qr .k { margin-bottom: 8px; text-align: center; }
   .chip {
     background: rgba(30,30,38,.9); color: var(--muted); cursor: pointer;
     border: 1px solid rgba(255,255,255,.14); border-radius: 99px;
@@ -919,7 +922,7 @@ const GUIDE = [
     ['Turning it on', 'Settings &rarr; <b>Phone remote</b>, then restart NAVFLIX. Until you do that the server only listens to this computer, which is why the change needs a restart.'],
     ['Where the address is', 'Settings &rarr; <b>Phone remote</b> shows the address and the pairing code side by side, with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time you open Settings, so it is always the current one.'],
     ['It changed by itself', 'The address is this PC on your network, so it changes when the PC joins a different one \u2014 home Wi-Fi, a phone hotspot, the office. The pairing code does not change, and a paired phone stays paired. Just open Settings for the new address.'],
-    ['Pairing', 'Open the address on the phone, type the six digit code once, and it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
+    ['Pairing', 'Point the phone camera at the <b>QR code</b> in Settings and it pairs on its own \u2014 the code travels in the link. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
     ['What the phone cannot do', 'Settings, the folder browser, adding or removing collections, and erasing progress are all refused over the network, whether or not the phone is paired. Those stay on the PC because they can change what gets run and can read your disk.'],
     ['Removing a phone', '<b>Unpair this phone</b> on the handset revokes it properly, not just locally. <b>New pairing code</b> in Settings drops every paired device at once, which is what to use if a phone goes missing. Switching the remote off also clears them all.'],
     ['It will not start now', 'Switching the remote on means the port has to be free on every network interface, not just this machine, so something that was quietly holding it can suddenly clash. NAVFLIX says which port and exits. Free it, or start with a different one: <code>set PORT=8788 &amp;&amp; node server.js</code>.'],
@@ -1787,6 +1790,13 @@ function renderRemoteInfo() {
         '<div class="k">Pairing code</div>' +
         '<div class="v pin">' + esc(r.pin) + '</div>' +
       '</div>' +
+      // The QR carries the address and the code together, so scanning it
+      // pairs the phone outright. Cache-busted because the address moves
+      // whenever this machine changes network.
+      (r.addresses.length
+        ? '<div class="rbox qr"><div class="k">Or scan</div>' +
+          '<img alt="Pairing QR code" src="/api/remote/qr?t=' + Date.now() + '"></div>'
+        : '') +
     '</div>' +
     '<div style="font-size:13px">' + (r.paired
       ? r.paired + ' device' + (r.paired === 1 ? '' : 's') + ' paired. '

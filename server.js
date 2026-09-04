@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
+const qr = require('./qr');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -2043,6 +2044,25 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (p === '/api/state') return json(res, 200, snapshot(local));
+
+    // The pairing QR carries the address and the code together, so the phone
+    // is one scan from paired. Local-only, deliberately: it contains the code,
+    // and a device that already has it has no use for a picture of it.
+    if (p === '/api/remote/qr') {
+      if (!local) return json(res, 403, { error: 'Not available remotely.' });
+      if (!state.remote.enabled || !state.remote.pin) {
+        return json(res, 400, { error: 'The remote is off.' });
+      }
+      const addrs = lanAddresses();
+      if (!addrs.length) return json(res, 400, { error: 'No network address.' });
+      const pick = Math.min(addrs.length - 1, Math.max(0, Number(url.searchParams.get('a')) || 0));
+      // The code rides in the fragment, which browsers never send to a server,
+      // so it stays out of logs and proxies on the way.
+      const target = 'http://' + addrs[pick] + ':' + PORT + '/remote#' + state.remote.pin;
+      const svg = qr.toSvg(target, { scale: 4, quiet: 3, dark: '#0a0a0c', light: '#ffffff' });
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
+      return res.end(svg);
+    }
 
     if (p === '/remote') {
       const html = fs.readFileSync(path.join(PUBLIC_DIR, 'remote.html'));

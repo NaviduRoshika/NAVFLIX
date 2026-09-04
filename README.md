@@ -64,7 +64,18 @@ binds `0.0.0.0` and prints an address and a six digit pairing code:
    Pairing code: 610337
 ```
 
-Open that on the phone, type the code once, and it stays paired.
+Open that on the phone, type the code once, and it stays paired. Easier still,
+scan the **QR code** shown in Settings: it carries the address and the pairing
+code together, so the phone pairs the moment the page opens.
+
+The code rides in the URL fragment (`/remote#123456`), which browsers never send
+to a server — so it stays out of request logs on the way. The remote page pairs
+with it, then strips it from the address bar so it is not left sitting in the
+phone's history.
+
+The QR itself is only ever served to the machine running NAVFLIX. A phone that
+is already paired gets `403` for it, since it contains the credential and a
+device holding that credential has no use for a picture of it.
 
 Settings → **Phone remote** shows the same address and code side by side with a
 **Copy address** button. The address is recomputed each time you open Settings,
@@ -357,7 +368,8 @@ length, positions, and history. Nothing is lost and no action is needed.
 | `public/remote.html` | The phone remote |
 | `public/manifest.webmanifest` | Makes it installable as an app window |
 | `public/icon-*.png` | App and tab icons |
-| `check.js` | `npm run check` — syntax-checks both files before you start |
+| `check.js` | `npm run check` — syntax-checks the pages before you start |
+| `qr.js` | QR encoder for the pairing code; no dependencies |
 | `package.json` | Lets you run `npm start`; no dependencies |
 | `data/state.json` | Your progress (created on first run) |
 
