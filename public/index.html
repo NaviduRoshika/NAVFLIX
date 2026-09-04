@@ -1016,6 +1016,7 @@ const GUIDE = [
   ]],
 
   ['art', 'Artwork', [
+    ['Wrong show matched?', 'A remake carries its original title, so searching finds two shows with the same name. Put the year in the folder name — <code>Avatar The Last Airbender - [2005]</code> — and the right one is chosen. If a collection has already latched onto the wrong one, use <b>Manage → Re-identify</b> to look it up again and replace the artwork. Your progress is untouched.'],
     ['Episodes show their own frame', 'A show has one poster, so every episode used to look identical. Episodes now use the still from that episode, which the catalogue provides and NAVFLIX already caches. Those stills are widescreen, so a show gets wider cards; film shelves keep tall posters.'],
     ['Your own files win', 'An image named after the film, such as <code>Iron Man (2008).jpg</code>, is always used ' +
       'first. In a folder-per-film layout, <code>poster.jpg</code> and <code>fanart.jpg</code> are picked up too.'],
@@ -1810,6 +1811,11 @@ function renderManage() {
     '</b><span>' + esc(c.path) + ' &middot; ' + c.done + '/' + c.total + ' films &middot; ' + c.episodeMinutes + ' min episodes</span></div>' +
     '<button class="mini" data-act="rename" data-id="' + c.id + '">Rename</button>' +
     '<button class="mini" data-act="repath" data-id="' + c.id + '">Folder</button>' +
+    // Remakes share a title with the original, so a show can be identified as
+    // the wrong one. This throws the answer away and looks it up again.
+    (c.missing ? '' :
+      '<button class="mini" data-act="reart" data-id="' + c.id + '" ' +
+      'title="Look this up again and replace the artwork">Re-identify</button>') +
     '<button class="mini danger" data-act="remove" data-id="' + c.id + '">Remove</button></div>'
   ).join('');
 
@@ -1829,6 +1835,20 @@ function renderManage() {
           S = await post('/api/collections/rename', { id: id, name: name });
         } else if (b.dataset.act === 'repath') {
           return openRepath(id);
+        } else if (b.dataset.act === 'reart') {
+          const sure = await uiConfirm({
+            title: 'Look up "' + c.name + '" again?',
+            message: 'Useful when a remake was matched instead of the original.\n' +
+              'The catalogue is searched again and every image is replaced.\n' +
+              'Your progress is untouched.',
+            confirmLabel: 'Look it up',
+          });
+          if (!sure) return;
+          S = await post('/api/art/fetch', { collectionId: id, force: true });
+          dlgManage.close();
+          lastSig = '';
+          paint();
+          return;
         } else {
           const sure = await uiConfirm({
             title: 'Remove "' + c.name + '"?',

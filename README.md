@@ -220,6 +220,24 @@ nag you about it forever. Use **Get artwork** again after adding new films.
 By default it uses **Cinemeta** (`v3-cinemeta.strem.io`), Stremio's public
 IMDb-backed catalogue: no key, no signup, no rate-limit registration.
 
+### Remakes
+
+A remake keeps the original title, so a search returns both under the same name
+and the title alone cannot separate them. Put the year in the folder name and it
+can:
+
+```
+Avatar The Last Airbender - [2005]     -> the animated series
+Avatar The Last Airbender - [2024]     -> the live action one
+```
+
+Square brackets, round brackets or a trailing `- 2005` all work, and the year is
+used only for matching — it never becomes part of the search.
+
+If a collection has already settled on the wrong title, **Manage → Re-identify**
+searches again and replaces every image. Progress is keyed on filenames, so it
+is untouched.
+
 A search always returns *something*, so a match is only accepted when the title
 matches exactly, or the year matches and the title is a clear prefix. A film it
 can't confidently identify keeps its generated poster rather than being given a

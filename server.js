@@ -903,20 +903,46 @@ async function imdbIdFor(title) {
 
 // Look the show up once per collection and keep its episode list on the
 // collection, so every episode gets a name, a still and an IMDb id to search on.
+// A year in the folder name, however it is bracketed.
+function yearHint(text) {
+  const m = String(text || '').match(/[([]\s*((?:19|20)\d{2})\s*[)\]]|[-\u2013\u2014]\s*((?:19|20)\d{2})\s*$/);
+  return m ? (m[1] || m[2]) : '';
+}
+
+// The year is a hint for matching, not part of what to search for.
+function withoutYear(text) {
+  return String(text || '')
+    .replace(/\s*[-\u2013\u2014]?\s*[([]\s*(?:19|20)\d{2}\s*[)\]]/g, '')
+    .replace(/\s*[-\u2013\u2014]\s*(?:19|20)\d{2}\s*$/, '')
+    .trim();
+}
+
 async function fetchSeriesMeta(c, shape) {
-  const tries = [shape.show, c.name, path.basename(c.path)].filter(Boolean);
+  // Remakes share their title with the original, so the title alone cannot tell
+  // them apart: searching "Avatar The Last Airbender" returns the 2024 series
+  // and the 2005 one under exactly the same name. A year in the folder is the
+  // only thing that separates them, and it was being thrown away here.
+  const hint = yearHint(c.name) || yearHint(path.basename(c.path));
+  const tries = [shape.show, withoutYear(c.name), withoutYear(path.basename(c.path))]
+    .filter(Boolean);
+
   let best = null;
+  let bestScore = 0;
   for (const q of tries) {
     try {
       const data = await getJson('https://v3-cinemeta.strem.io/catalog/series/top/search=' +
         encodeURIComponent(q) + '.json');
+      // Score every candidate and keep the strongest. Taking the first one over
+      // the bar handed the answer to whichever the catalogue happened to rank
+      // highest, which for a remake is the new one.
       for (const m of (data && data.metas) || []) {
-        if (scoreMatch(m.name, m.releaseInfo, q, '') >= 2) { best = m; break; }
+        const sc = scoreMatch(m.name, m.releaseInfo, q, hint);
+        if (sc > bestScore) { best = m; bestScore = sc; }
       }
     } catch (e) { /* try the next phrasing */ }
-    if (best) break;
+    if (bestScore >= 3) break;      // title and year both agree; nothing will beat it
   }
-  if (!best) return null;
+  if (!best || bestScore < 2) return null;
 
   const full = await getJson('https://v3-cinemeta.strem.io/meta/series/' + best.id + '.json');
   const episodes = {};
