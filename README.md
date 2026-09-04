@@ -181,6 +181,16 @@ For a film at `Iron Man (2008).mkv`, it looks for:
 Files you supply always beat anything downloaded, so dropping your own `poster.jpg`
 in overrides a fetched one.
 
+### Episodes
+
+A show has exactly one poster, so a season of episodes all looked the same.
+Episodes instead use the still from that episode, which the catalogue supplies
+per episode and NAVFLIX already caches alongside everything else.
+
+Those stills are 16:9 rather than the 2:3 of a poster, so shows get wider cards.
+Cropping a widescreen frame into a tall slot throws away most of the picture,
+which is the whole point of using it. Film collections keep tall posters.
+
 ### Two kinds of artwork
 
 - **Poster** — portrait, 2:3, used on the rail cards.

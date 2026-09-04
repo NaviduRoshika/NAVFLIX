@@ -24,6 +24,7 @@
     --red-hi: #f6212f;
     --shadow: 0 18px 45px rgba(0,0,0,.65);
     --card-w: 172px;
+    --card-wide: 288px;
   }
   * { box-sizing: border-box; }
   /* Author rules like `label.f { display: block }` outrank the UA's
@@ -321,6 +322,13 @@
   .rail-wrap:has(.rail.open) .railtoggle { opacity: 1; }   /* stays put while open */
 
   .card { width: var(--card-w); flex: none; cursor: pointer; transition: transform .22s ease; position: relative; }
+  /* Episodes carry a still from the episode itself, which is a 16:9 frame. A
+     film poster is 2:3. Cropping one into the other loses most of the picture,
+     so a show gets wider cards rather than a squeezed poster. */
+  .card.wide { width: var(--card-wide); }
+  .card.wide .poster { aspect-ratio: 16/9; }
+  .card.wide .poster .num { font-size: 26px; }
+  .card.wide .poster .ptxt { font-size: 13.5px; padding: 10px; }
   .card:hover { transform: scale(1.09); z-index: 20; }
   .card.sel .poster { outline: 3px solid var(--red); outline-offset: 2px; }
   .card.sel .cname { color: #fff; }
@@ -612,9 +620,13 @@ function fakeArt(title) {
   const h = hueOf(title);
   return 'linear-gradient(155deg, hsl(' + h + ',42%,30%), hsl(' + ((h + 45) % 360) + ',55%,10%))';
 }
-function posterStyle(m) {
-  return m.art
-    ? "background-image:url('" + m.art + "')"
+// A show wants the episode still, which NAVFLIX already caches as that
+// episode's backdrop. A film wants its poster. Either falls back to the other
+// before giving up and drawing something from the title.
+function posterStyle(m, wide) {
+  const img = wide ? (m.backdrop || m.art) : (m.art || m.backdrop);
+  return img
+    ? "background-image:url('" + img + "')"
     : 'background-image:' + fakeArt(m.title);
 }
 
@@ -1003,6 +1015,7 @@ const GUIDE = [
   ]],
 
   ['art', 'Artwork', [
+    ['Episodes show their own frame', 'A show has one poster, so every episode used to look identical. Episodes now use the still from that episode, which the catalogue provides and NAVFLIX already caches. Those stills are widescreen, so a show gets wider cards; film shelves keep tall posters.'],
     ['Your own files win', 'An image named after the film, such as <code>Iron Man (2008).jpg</code>, is always used ' +
       'first. In a folder-per-film layout, <code>poster.jpg</code> and <code>fanart.jpg</code> are picked up too.'],
     ['Get artwork', 'The billboard button fetches a poster and a landscape backdrop for anything missing one and ' +
@@ -1151,8 +1164,10 @@ function card(m, opts) {
 
   // The controls live INSIDE the poster. Floating them above the card put them
   // outside the rail's overflow:hidden box, which sliced the top off them.
-  return '<div class="card ' + (m.done ? 'done ' : '') + (isHero ? 'sel' : '') + '" data-i="' + m.index + '">' +
-      '<div class="poster" style="' + posterStyle(m) + '">' +
+  const wide = !!opts.wide;
+  return '<div class="card ' + (wide ? 'wide ' : '') + (m.done ? 'done ' : '') +
+      (isHero ? 'sel' : '') + '" data-i="' + m.index + '">' +
+      '<div class="poster" style="' + posterStyle(m, wide) + '">' +
         '<div class="scrim"></div>' +
         (isPlaying ? '<div class="playing">NOW</div>' : (m.done ? '<div class="tick">&#10003;</div>' : '')) +
         '<div class="num">' + (m.index + 1) + '</div>' +
@@ -1391,7 +1406,12 @@ function render() {
   const upnext = A.queue.filter((m) => !m.done && !m.position);
   const done = A.queue.filter((m) => m.done);
 
-  const ho = { heroIndex: hero ? hero.index : -1, playingIndex: P ? P.index : -1 };
+  // Series rails show episode stills, which need the wider card.
+  const ho = {
+    heroIndex: hero ? hero.index : -1,
+    playingIndex: P ? P.index : -1,
+    wide: !!A.series,
+  };
   html += rail('r1', 'Continue watching', watching, null, ho);
 
   if (A.series) {
