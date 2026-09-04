@@ -768,15 +768,17 @@ function externalSubs(c, rel) {
   const dir = path.dirname(abs);
   const base = path.basename(rel, path.extname(rel));
 
-  // Files you put there yourself always come first.
-  for (const suffix of ['', '.en', '.eng', '.english', '.EN']) {
+  // Files you put there yourself always come first. One folder listing rather
+  // than a probe per candidate, for the same reason the artwork lookup uses one.
+  const index = dirIndex(dir);
+  for (const suffix of ['', '.en', '.eng', '.english']) {
     for (const ext of SIDECAR_EXT) {
-      const p = path.join(dir, base + suffix + ext);
-      try {
-        if (fs.existsSync(p) && !out.some((o) => o.path === p)) {
-          out.push({ path: p, label: path.basename(p), origin: 'beside the film' });
-        }
-      } catch (e) {}
+      const real = index.get((base + suffix + ext).toLowerCase());
+      if (!real) continue;
+      const p = path.join(dir, real);
+      if (!out.some((o) => o.path === p)) {
+        out.push({ path: p, label: real, origin: 'beside the film' });
+      }
     }
   }
 
@@ -1126,6 +1128,39 @@ const ART_DIR = path.join(DATA_DIR, 'art');
 const artCache = new Map(); // key -> { at, p }  (p = absolute image path, or '')
 const ART_TTL = 60000;      // so art you drop in by hand is noticed without a restart
 
+// One listing per folder, held as long as the art cache is. Looking for sixty
+// candidate filenames used to mean sixty existsSync calls per video, and with
+// a poster and a backdrop each that came to about a hundred and twenty. Across
+// a real library on an external disk that was sixty-six thousand seeks and the
+// better part of a minute staring at an empty page.
+//
+// Keyed on the lowercased name because Windows filesystems are not case
+// sensitive and existsSync was matching Poster.JPG all along.
+const dirCache = new Map();   // dir -> { at, index: Map(lowercase -> real name) }
+
+function dirIndex(dir) {
+  const now = Date.now();
+  const hit = dirCache.get(dir);
+  if (hit && now - hit.at < ART_TTL) return hit.index;
+
+  const index = new Map();
+  try {
+    for (const name of fs.readdirSync(dir)) index.set(name.toLowerCase(), name);
+  } catch (e) { /* folder gone or unreadable; an empty index is the right answer */ }
+  dirCache.set(dir, { at: now, index: index });
+  return index;
+}
+
+// The first candidate the folder actually holds, or empty.
+function firstPresent(dir, names) {
+  const index = dirIndex(dir);
+  for (const n of names) {
+    const real = index.get(n.toLowerCase());
+    if (real) return path.join(dir, real);
+  }
+  return '';
+}
+
 function artCacheGet(key) {
   const hit = artCache.get(key);
   if (hit && Date.now() - hit.at < ART_TTL) return hit.p;
@@ -1170,11 +1205,7 @@ function findBackdrop(c, rel) {
     for (const n of BACKDROP_ART) for (const e of exts) names.push(n + e);
   }
 
-  let found = '';
-  for (const n of names) {
-    const p = path.join(dir, n);
-    try { if (fs.existsSync(p)) { found = p; break; } } catch (e) {}
-  }
+  let found = firstPresent(dir, names);
   if (!found) {
     const cached = cachedArtPath(c, rel, 'bg');
     try { if (fs.existsSync(cached)) found = cached; } catch (e) {}
@@ -1206,11 +1237,7 @@ function findArt(c, rel) {
     for (const n of GENERIC_ART) for (const e of exts) names.push(n + e);
   }
 
-  let found = '';
-  for (const n of names) {
-    const p = path.join(dir, n);
-    try { if (fs.existsSync(p)) { found = p; break; } } catch (e) {}
-  }
+  let found = firstPresent(dir, names);
 
   // Files you supplied always beat anything downloaded.
   if (!found) {

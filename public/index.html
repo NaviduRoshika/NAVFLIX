@@ -72,6 +72,31 @@
   .navlinks { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 52vw; }
   .navlinks::-webkit-scrollbar { height: 0; }
 
+  /* ------------------------------------------------------------------ loading */
+  .boot { display: grid; place-items: center; min-height: 74vh; text-align: center; }
+  .boot .mark {
+    color: var(--red); font-weight: 900; font-size: 30px; letter-spacing: -1px;
+    margin-bottom: 22px;
+  }
+  .boot .msg { color: var(--text); font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .boot .why { color: var(--muted); font-size: 13px; max-width: 380px; line-height: 1.5; }
+
+  /* An indeterminate bar, because the scan blocks the server and it genuinely
+     cannot report a percentage. A bar that invents one would be a lie. */
+  .track {
+    width: 260px; height: 4px; border-radius: 99px; background: #23232b;
+    overflow: hidden; margin: 0 auto 16px;
+  }
+  .track i {
+    display: block; height: 100%; width: 40%; border-radius: 99px;
+    background: var(--red); animation: slide 1.15s ease-in-out infinite;
+  }
+  @keyframes slide {
+    0%   { transform: translateX(-110%); }
+    100% { transform: translateX(360%); }
+  }
+  .track.slim { width: 100%; margin: 10px 0 0; }
+
   /* ---------------------------------------------------------------- library */
   .libwrap { padding: 104px 44px 80px; }
   .libtitle { font-size: 30px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.6px; }
@@ -424,7 +449,18 @@
   <button class="mini" id="btnSettings">Settings</button>
 </div>
 
-<div id="app"></div>
+<!-- Painted by the HTML itself, so there is something on screen the instant the
+     page loads rather than a black rectangle while the first scan runs. -->
+<div id="app">
+  <div class="boot">
+    <div>
+      <div class="mark">NAVFLIX</div>
+      <div class="track"><i></i></div>
+      <div class="msg" id="bootMsg">Reading your collections…</div>
+      <div class="why" id="bootWhy"></div>
+    </div>
+  </div>
+</div>
 
 <dialog id="dlgFolder">
   <div class="dh" id="folderTitle">Add a collection</div>
@@ -636,11 +672,35 @@ const post = (p, body) => api(p, {
 });
 
 /* ---------------------------------------------------------------- render */
+// The first scan of a large library on an external disk is slow, and silence
+// reads as a hang. Say what is happening once it has gone on long enough to
+// be worth explaining.
+let bootTimers = [];
+function bootWatch() {
+  const why = (t) => { const el = $('#bootWhy'); if (el) el.textContent = t; };
+  bootTimers.push(setTimeout(() => {
+    why('Counting files. An external drive takes longer the first time, ' +
+        'while it spins up and the folder listings are read.');
+  }, 2500));
+  bootTimers.push(setTimeout(() => {
+    const msg = $('#bootMsg');
+    if (msg) msg.textContent = 'Still reading\u2026';
+    why('Large collections can take a minute on a slow disk. This only happens ' +
+        'on the first load; afterwards it is read from memory.');
+  }, 12000));
+}
+function bootDone() {
+  bootTimers.forEach(clearTimeout);
+  bootTimers = [];
+}
+bootWatch();
+
 let navSeeded = false;
 
 async function refresh() {
   try {
     S = await api('/api/state');
+    bootDone();
     // Two entries: a floor that Back can never step off, and the view you
     // actually started on sitting above it.
     if (!navSeeded) {
@@ -649,7 +709,20 @@ async function refresh() {
       navSeeded = true;
     }
     paint();
-  } catch (e) { /* server restarting */ }
+  } catch (e) {
+    // Nothing has ever loaded and the request failed: say so, rather than
+    // leaving a bar spinning over an app that is never going to arrive.
+    if (!S) {
+      bootDone();
+      const msg = $('#bootMsg'), why = $('#bootWhy'), bar = document.querySelector('.boot .track');
+      if (bar) bar.remove();
+      if (msg) msg.textContent = 'Cannot reach NAVFLIX';
+      if (why) {
+        why.textContent = 'The server window may have closed. Start it again, then reload ' +
+          'this page. ' + (e && e.message ? '(' + e.message + ')' : '');
+      }
+    }
+  }
 }
 
 // Full repaints destroy scroll position and hover, so only rebuild when the
@@ -1676,6 +1749,18 @@ $('#btnUp').onclick = async () => {
   loadBrowse(d.parent || '');
 };
 $('#btnUseFolder').onclick = async () => {
+  // Adding a folder scans it, which on a big show over USB is not instant. The
+  // dialog says so instead of sitting there looking broken.
+  const btn = $('#btnUseFolder');
+  const label = btn.textContent;
+  const bar = document.createElement('div');
+  bar.className = 'track slim';
+  bar.innerHTML = '<i></i>';
+  btn.parentNode.insertBefore(bar, btn.nextSibling);
+  btn.disabled = true;
+  $('#btnUp').disabled = true;
+  btn.textContent = folderMode.kind === 'repath' ? 'Relinking\u2026' : 'Scanning\u2026';
+
   try {
     S = folderMode.kind === 'repath'
       ? await post('/api/collections/repath', { id: folderMode.id, path: browsePath })
@@ -1683,7 +1768,14 @@ $('#btnUseFolder').onclick = async () => {
     dlgFolder.close();
     lastSig = '';
     paint();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    bar.remove();
+    btn.disabled = false;
+    $('#btnUp').disabled = false;
+    btn.textContent = label;
+  }
 };
 
 /* ---------------------------------------------------------------- manage */
