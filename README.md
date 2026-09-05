@@ -346,8 +346,16 @@ them entirely.
 
 The picker scores every track: English by language code *or* by name, with Forced,
 SDH, Signs and Commentary pushed down, and text preferred over bitmap. If nothing
-declares itself English but there is exactly one untagged text track, it offers
-that and labels it as a guess.
+declares itself English but there is exactly one untagged track, it offers that
+and labels it as a guess.
+
+That guess used to be limited to *text* tracks, on the reasoning that text is
+nicer to look at. It is — but that is a reason to prefer text, not to refuse to
+guess when the only candidate is a picture, and a picture is exactly what a
+Blu-ray rip carries. A release whose only English subtitle was an untagged PGS
+track, sitting beside tagged Indonesian and Malay ones, played with no subtitle
+at all. Checked across 981 files: four films gained a subtitle and no film's
+existing choice changed.
 
 A **Subtitles** dropdown sits under the billboard buttons: `Auto`, `Off`, or any
 track by name. The choice is remembered per film in `data/state.json`.

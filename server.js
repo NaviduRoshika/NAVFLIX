@@ -695,11 +695,19 @@ function autoSub(tracks) {
   }
   if (best) return best;
 
-  // Nothing declares itself English. A lone untagged text track is almost always
-  // the English one, so offer it rather than leaving the film bare — but mark it
-  // as a guess so the UI can say so.
-  const guesses = tracks.filter((t) => t.untagged && !t.bitmap);
-  return guesses.length === 1 ? Object.assign({}, guesses[0], { guess: true }) : null;
+  // Nothing declares itself English. A lone untagged track is almost always the
+  // English one, so offer it rather than leaving the film bare — but mark it as a
+  // guess so the UI can say so.
+  //
+  // Bitmap tracks were excluded from this, on the reasoning that text is nicer.
+  // It is, but that is a reason to prefer text, not to refuse to guess when the
+  // only candidate is a picture — and PGS is exactly what a Blu-ray rip carries.
+  // A release with an untagged English PGS track alongside tagged Indonesian and
+  // Malay ones played with no subtitle at all.
+  const untagged = tracks.filter((t) => t.untagged);
+  const text = untagged.filter((t) => !t.bitmap);
+  const pool = text.length ? text : untagged;
+  return pool.length === 1 ? Object.assign({}, pool[0], { guess: true }) : null;
 }
 
 // ---- external subtitle files ------------------------------------------------
