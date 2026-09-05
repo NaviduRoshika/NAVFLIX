@@ -90,8 +90,10 @@ binds `0.0.0.0` and prints an address and a six digit pairing code:
 ```
 
 Open that on the phone, type the code once, and it stays paired. Easier still,
-scan the **QR code** shown in Settings: it carries the address and the pairing
-code together, so the phone pairs the moment the page opens.
+press **QR** in the top bar — beside Settings, and only there once the remote is
+on — and scan what comes up. The code travels with the address, so the phone
+pairs the moment the page opens. The same code is in Settings under *Phone
+remote*, alongside the rest of the controls.
 
 The code rides in the URL fragment (`/remote#123456`), which browsers never send
 to a server — so it stays out of request logs on the way. The remote page pairs

@@ -579,6 +579,20 @@
   .mrow .t span { color: var(--muted); font-size: 12px; word-break: break-all; }
   h3.sec { font-size: 12px; text-transform: uppercase; letter-spacing: 1.6px; color: var(--muted); margin: 0 0 12px; }
 
+  #dlgQr { width: min(440px, 92vw); }
+  .qrwrap { text-align: center; }
+  .qrwrap img {
+    display: block; width: 250px; height: 250px; margin: 0 auto 18px;
+    border-radius: 8px; background: #fff; padding: 8px;
+  }
+  .qrwrap .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; line-height: 1.5; }
+  .qrpair { display: flex; gap: 10px; }
+  .qrpair .rbox { text-align: left; }
+  /* The address is one long unbreakable-looking string; let it use the room
+     rather than splitting "/remote" across two lines. */
+  .qrpair .addr { font-size: 13.5px; word-break: normal; overflow-wrap: anywhere; }
+  .qrwrap .foot { color: var(--muted); font-size: 12.5px; margin: 14px 0 0; line-height: 1.5; }
+
   #dlgAsk { width: min(460px, 92vw); }
   .askmsg { color: var(--muted); font-size: 14px; margin: 0; white-space: pre-line; }
   .askmsg + .f { margin-top: 16px; }
@@ -613,6 +627,7 @@
   <button class="mini" id="btnDetails" onclick="goDetails()" title="What is in these files, and who made them" hidden>Details</button>
   <button class="mini" id="btnGuide" onclick="goGuide()" title="How everything works" hidden>Guide</button>
   <button class="mini" id="btnManage">Manage</button>
+  <button class="mini" id="btnQr" onclick="openQr()" title="Scan this with your phone to use it as the remote" hidden>QR</button>
   <button class="mini" id="btnSettings">Settings</button>
 </div>
 
@@ -716,6 +731,16 @@
     <div class="spacer"></div>
     <button class="mini" onclick="dlgSettings.close()">Close</button>
     <button class="mini go" id="btnSaveSettings">Save</button>
+  </div>
+</dialog>
+
+<dialog id="dlgQr">
+  <div class="dh">Use your phone as the remote</div>
+  <div class="db"><div class="qrwrap" id="qrBody"></div></div>
+  <div class="df">
+    <button class="mini" id="btnQrSettings">Remote settings</button>
+    <div class="spacer"></div>
+    <button class="mini" onclick="dlgQr.close()">Close</button>
   </div>
 </dialog>
 
@@ -1638,9 +1663,9 @@ const GUIDE = [
     ['Browsing from the phone', 'The <b>&#9776; Browse</b> button opens your collections, and tapping one opens its list of films or episodes, grouped by season for a show. Tapping a title <b>selects</b> it and returns you to the handset screen; the big red button is still what starts it, so nothing plays by accident.'],
     ['It moves the PC too', 'Picking a collection on the phone switches the PC to it as well, so the two never disagree about what you are watching.'],
     ['Turning it on', 'Settings &rarr; <b>Phone remote</b>, then restart NAVFLIX. Until you do that the server only listens to this computer, which is why the change needs a restart.'],
-    ['Where the address is', 'Settings &rarr; <b>Phone remote</b> shows the address and the pairing code side by side, with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time you open Settings, so it is always the current one.'],
+    ['Where the address is', 'The <b>QR</b> button in the top bar shows the address, the code and the scannable version together. Settings &rarr; <b>Phone remote</b> has the same thing with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time either one is opened, so it is always the current one — which matters, because it changes when this PC joins another network.'],
     ['It changed by itself', 'The address is this PC on your network, so it changes when the PC joins a different one \u2014 home Wi-Fi, a phone hotspot, the office. The pairing code does not change, and a paired phone stays paired. Just open Settings for the new address.'],
-    ['Pairing', 'Point the phone camera at the <b>QR code</b> in Settings and it pairs on its own \u2014 the code travels in the link. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
+    ['Pairing', 'Press <b>QR</b> in the top bar and point the phone camera at it \u2014 the code travels in the link, so it pairs on its own. The button only appears once the remote is on and this machine has a network address. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
     ['What the phone cannot do', 'Settings, the folder browser, adding or removing collections, and erasing progress are all refused over the network, whether or not the phone is paired. Those stay on the PC because they can change what gets run and can read your disk.'],
     ['Removing a phone', '<b>Unpair this phone</b> on the handset revokes it properly, not just locally. <b>New pairing code</b> in Settings drops every paired device at once, which is what to use if a phone goes missing. Switching the remote off also clears them all.'],
     ['It will not start now', 'Switching the remote on means the port has to be free on every network interface, not just this machine, so something that was quietly holding it can suddenly clash. NAVFLIX says which port and exits. Free it, or start with a different one: <code>set PORT=8788 &amp;&amp; node server.js</code>.'],
@@ -1786,6 +1811,11 @@ function renderTabs() {
   // Details is about one collection, so it only means anything inside one.
   const db = $('#btnDetails');
   if (db) db.hidden = !(S && S.activeId) || view === 'library' || view === 'guide';
+  // Only worth offering once there is something to scan. The code and the
+  // address are blank on a paired phone by construction, so the phone never
+  // sees this button either.
+  const qb = $('#btnQr');
+  if (qb) qb.hidden = !qrReady();
 
   const t = $('#tabs');
   if (!S || !S.collections.length) { t.innerHTML = ''; return; }
@@ -2686,6 +2716,52 @@ function renderRemoteInfo() {
   const cp = $('#btnCopyAddr');
   if (cp) cp.onclick = () => copyText(r.addresses[0], $('#remoteInfo .v'));
 }
+
+// Everything the QR needs: the remote switched on, a code issued, and an
+// address to point at.
+function qrReady() {
+  const r = S && S.remote;
+  return !!(r && r.enabled && r.pin && r.addresses && r.addresses.length);
+}
+
+// The same pairing QR as in Settings, but big and one click away — scanning it
+// from the sofa is the whole point, and burying it three panels deep was not
+// helping.
+function openQr() {
+  if (!qrReady()) {
+    toast('Turn the phone remote on in Settings first.');
+    return;
+  }
+  renderQr();
+  dlgQr.showModal();
+}
+
+function renderQr() {
+  const r = S.remote;
+  const addr = r.addresses[0].replace(/^https?:\/\//, '');
+  // Cache-busted: the address changes whenever this machine joins another
+  // network, and a stale QR would send the phone nowhere.
+  $('#qrBody').innerHTML =
+    '<img alt="Pairing QR code" src="/api/remote/qr?t=' + Date.now() + '">' +
+    '<p class="lead">Point your phone camera at this. The pairing code travels ' +
+    'in the link, so it connects on its own.</p>' +
+    '<div class="qrpair">' +
+      '<div class="rbox" style="flex:1"><div class="k">Or type this in</div>' +
+      '<div class="v addr">' + esc(addr) + '</div>' +
+      '<button class="mini" id="btnQrCopy">Copy address</button></div>' +
+      '<div class="rbox" style="flex:0 0 128px"><div class="k">Code</div>' +
+      '<div class="v pin" style="font-size:19px;letter-spacing:3px">' + esc(r.pin) + '</div></div>' +
+    '</div>' +
+    '<p class="foot">' + (r.paired
+      ? r.paired + ' device' + (r.paired === 1 ? '' : 's') + ' already paired. '
+      : '') +
+      'Both phone and PC have to be on the same Wi-Fi.</p>';
+
+  const cp = $('#btnQrCopy');
+  if (cp) cp.onclick = () => copyText(r.addresses[0], $('#qrBody .v'));
+}
+
+$('#btnQrSettings').onclick = () => { dlgQr.close(); $('#btnSettings').click(); };
 
 // Three attempts, most capable first. The last one does not copy anything but
 // leaves the text selected, so Ctrl+C finishes the job by hand.
