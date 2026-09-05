@@ -113,8 +113,8 @@ change with it, and a paired phone stays paired.
 ### What the phone is allowed to do
 
 Deliberately less than the desktop. A paired phone may read the state, play,
-pause, seek, stop, skip, switch collection and change subtitles. Everything
-else is refused over the network **even when paired**:
+pause, seek, stop, skip, switch collection, change the volume and change
+subtitles. Everything else is refused over the network **even when paired**:
 
 | Refused remotely | Why |
 | --- | --- |

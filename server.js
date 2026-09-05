@@ -1947,6 +1947,26 @@ function play(c, index, extraSeconds) {
   return session;
 }
 
+// Switch the subtitle on the VLC that is already playing, rather than only on
+// the next sitting. VLC numbers its subtitle streams exactly as --sub-track-id
+// does — verified by snapshotting the same frame with each track selected and
+// getting three different pictures — and anything that is not a subtitle stream,
+// 0 included, turns them off.
+//
+// An external .srt cannot be swapped in this way: it is handed to VLC as a
+// launch flag. That choice is saved and takes effect on the next sitting, and
+// the caller is told which of the two happened.
+function applySubLive(c, rel, choice) {
+  if (!session || session.collectionId !== c.id || session.rel !== rel) return 'not playing';
+  if (choice === 'off') { vlcCommand('subtitle_track', { val: '0' }); return 'now'; }
+
+  const target = subTarget(c, rel);
+  if (target.off) { vlcCommand('subtitle_track', { val: '0' }); return 'now'; }
+  if (target.file) return 'next sitting';       // an external file, set at launch
+  vlcCommand('subtitle_track', { val: String(target.track) });
+  return 'now';
+}
+
 // The same local interface poll() reads from also takes commands, so pausing
 // and seeking from the phone need no extra machinery.
 function vlcCommand(command, params) {
@@ -2010,6 +2030,9 @@ function apply(json) {
   const time = Number(json.time) || 0;
   const length = Number(json.length) || 0;
   session.vlcState = json.state || 'unknown';
+  // VLC's scale is 0-256 for 100%, and it will go above that. Measured, not
+  // assumed: val=128 reads back 128, and +50 from 256 reads back 306.
+  if (json.volume != null) session.volume = Number(json.volume) || 0;
   if (length > 0) session.length = length;
   if (time > 0) session.time = time;
 
@@ -2232,6 +2255,7 @@ function snapshot(local) {
           start: session.start,
           stop: session.stop,
           vlcState: session.vlcState,
+          volume: session.volume == null ? null : Math.round((session.volume / 256) * 100),
         }
       : null,
   };
@@ -2307,7 +2331,7 @@ const MIME = {
 const REMOTE_ALLOWED = new Set([
   '/api/state', '/api/art', '/api/play', '/api/stop', '/api/mark',
   '/api/collections/select', '/api/subs', '/api/subs/next', '/api/subs/delay',
-  '/api/vlc/pause', '/api/vlc/seek', '/api/remote/unpair',
+  '/api/vlc/pause', '/api/vlc/seek', '/api/vlc/volume', '/api/remote/unpair',
 ]);
 
 function isLocal(req) {
@@ -2600,6 +2624,24 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, snapshot(local));
     }
 
+    if (p === '/api/vlc/volume' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (!session) return json(res, 400, { error: 'Nothing is playing.' });
+      // Percentages here, VLC's 0-256 on the wire. Above 100% is VLC amplifying,
+      // which it will do but which sounds bad, so this stops at 100.
+      let val;
+      if (b.percent != null) {
+        val = Math.round((Math.max(0, Math.min(100, Number(b.percent) || 0)) / 100) * 256);
+      } else {
+        const now = session.volume == null ? 256 : session.volume;
+        const step = Math.round(((Number(b.delta) || 0) / 100) * 256);
+        val = Math.max(0, Math.min(256, now + step));
+      }
+      vlcCommand('volume', { val: String(val) });
+      session.volume = val;
+      return json(res, 200, snapshot(local));
+    }
+
     if (p === '/api/vlc/seek' && req.method === 'POST') {
       const b = await readBody(req);
       if (!session) return json(res, 400, { error: 'Nothing is playing.' });
@@ -2685,7 +2727,8 @@ const server = http.createServer(async (req, res) => {
         r.sub = want;
       }
       saveNow();
-      return json(res, 200, snapshot(local));
+      const when = applySubLive(c, item.rel, b.choice);
+      return json(res, 200, Object.assign(snapshot(local), { applied: when }));
     }
 
     if (p === '/api/mark' && req.method === 'POST') {

@@ -105,6 +105,23 @@
     color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .8px;
     text-transform: uppercase; margin: 18px 0 8px; padding-left: 2px;
   }
+  .shead .v { float: right; color: var(--text); letter-spacing: 0; }
+
+  /* ---- sound and subtitles ---- */
+  button.vol { font-size: 20px; }
+  button.vol.off { border-color: var(--red); color: var(--red); }
+  select.subs {
+    font: inherit; font-weight: 700; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 12px; width: 100%;
+    padding: 16px 12px; min-height: 58px; margin-bottom: 12px;
+    -webkit-appearance: none; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, #8b90a0 50%),
+                      linear-gradient(135deg, #8b90a0 50%, transparent 50%);
+    background-position: calc(100% - 20px) 26px, calc(100% - 14px) 26px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+  }
+  select.subs:focus { outline: none; border-color: var(--red); }
   .shead:first-child { margin-top: 4px; }
 
   .status {
@@ -317,6 +334,47 @@ function renderItems() {
 
 /* -------------------------------------------------------------------- the now */
 
+// VLC has no mute of its own, only a volume, so muting is "go to zero" and
+// unmuting is "go back to where you were". That level has to live somewhere.
+let preMute = 0;
+
+// Only while something is playing: there is no volume to change otherwise.
+function soundRow(P, playing) {
+  if (!playing || !P || P.volume == null) return '';
+  const v = P.volume;
+  return '<div class="shead">Sound<span class="v">' + (v === 0 ? 'Muted' : v + '%') + '</span></div>' +
+    '<div class="row">' +
+      '<button class="vol' + (v === 0 ? ' off' : '') + '" id="volMute">' +
+        (v === 0 ? '&#128263;' : '&#128266;') + '</button>' +
+      '<button class="vol" id="volDown"' + (v <= 0 ? ' disabled' : '') + '>&minus;</button>' +
+      '<button class="vol" id="volUp"' + (v >= 100 ? ' disabled' : '') + '>+</button>' +
+    '</div>';
+}
+
+// The same picker the dashboard has. Changing it while the film is running
+// switches the track on the spot; an external .srt can only be handed to VLC at
+// launch, so that one waits for the next sitting.
+function subtitleRow(item) {
+  const s = item.subs;
+  if (!s || (!s.tracks.length && !s.options)) return '';
+  const opts = s.tracks || [];
+  if (!opts.length) return '';
+
+  const chosenId = s.choice === undefined || s.choice === 'auto' ? 'auto' : s.choice;
+  const autoLabel = s.activeId === null ? 'Auto \u2014 none'
+    : 'Auto \u2014 ' + ((opts.find((t) => t.id === s.activeId) || {}).label || 'on');
+
+  let h = '<div class="shead">Subtitles</div><select class="subs" id="subPick">';
+  h += '<option value="auto"' + (chosenId === 'auto' ? ' selected' : '') + '>' + esc(autoLabel) + '</option>';
+  h += '<option value="off"' + (chosenId === 'off' ? ' selected' : '') + '>Off</option>';
+  opts.forEach((t) => {
+    h += '<option value="' + esc(String(t.id)) + '"' +
+      (String(chosenId) === String(t.id) ? ' selected' : '') + '>' +
+      esc(t.label) + (t.bitmap ? ' [image]' : '') + '</option>';
+  });
+  return h + '</select>';
+}
+
 function renderNow() {
   const A = S && S.active;
   const P = S && S.playing;
@@ -387,6 +445,8 @@ function renderNow() {
           (item.done ? '' : '<button id="skip">&#10003; Watched</button>') +
         '</div>') +
 
+    soundRow(P, playing) +
+    subtitleRow(item) +
     '<div class="status ' + (msgBad ? 'err' : '') + '">' + esc(msg) + '</div>' +
     '<hr>' +
     '<div class="row"><button class="small" id="unpair">Unpair this phone</button></div>';
@@ -397,6 +457,15 @@ function renderNow() {
   on('fwd30', () => act('/api/vlc/seek', { delta: 30 }));
   on('stop', () => act('/api/stop'));
   on('browse', () => go('collections'));
+  on('volDown', () => act('/api/vlc/volume', { delta: -10 }));
+  on('volUp', () => act('/api/vlc/volume', { delta: 10 }));
+  on('volMute', () => {
+    const now = P && P.volume != null ? P.volume : 100;
+    if (now > 0) { preMute = now; return act('/api/vlc/volume', { percent: 0 }); }
+    return act('/api/vlc/volume', { percent: preMute || 60 });
+  });
+  const sel = $('#subPick');
+  if (sel) sel.onchange = () => act('/api/subs', { index: item.index, choice: sel.value });
   on('play', async () => {
     // A watched title needs rewinding first, or it would finish instantly.
     if (item.done) await act('/api/mark', { index: item.index, rewind: true });
