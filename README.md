@@ -454,12 +454,41 @@ reports them.
 - When a sitting ends the button reads *Next 40m* (or whatever you set). Press it
   as many times as you like — nothing stops you at a daily total.
 
+## Why the first load is quick
+
+Drawing the Library means knowing what is in every folder, and it would be easy
+to make that cost a fortune on an external drive. Two things keep it cheap.
+
+**One directory listing per folder, not one check per file.** Resolving artwork
+by asking the filesystem whether each of six extensions exists, for each of nine
+generic names, twice, once cost 68,594 calls and forty seconds. The listing is
+read once and answered from memory.
+
+**Subtitle tracks are only read for the folder you have open.** Listing them
+means opening the video and reading a megabyte of it — nine, when the track table
+sits past the first megabyte. That used to happen for every collection on every
+refresh, because the Library grid and the tab counts are built from queues too.
+On a 23-folder library that was **1,085 MB read to draw a list of folder names**,
+of which 1,084 MB was for folders that were not even on screen: about two minutes
+on a USB hard drive. Only the collection actually on screen pays now, and the
+answer is written to `state.json`, so it is worked out once per file ever rather
+than once per launch.
+
+| first `/api/state`, 23 folders / 1,048 files | before | after |
+| --- | --- | --- |
+| files opened | 981 | 0 |
+| read from disk | 1,085 MB | 0 MB |
+| opening a 282-episode show | 279 MB | 0 MB |
+
 ## Where state lives
 
 `data/state.json` — the VLC path, whether to open a window on startup, and for
-every collection its progress per file and its watch log. Once you have run a
-Details scan it also holds what was read out of each file and the cast and crew
-for each title, which adds roughly a megabyte for a library of eight hundred. Back it up and your marathons survive a reinstall.
+every collection its progress per file and its watch log. It also remembers the
+subtitle tracks found inside each video, so that is worked out once rather than
+on every launch, and — once you have run a Details scan — what was read out of
+each file and the cast and crew for each title. Together those add roughly two
+megabytes for a library of a thousand files. Back it up and your marathons
+survive a reinstall.
 Settings → **Erase this collection's progress** resets one without touching the
 others.
 

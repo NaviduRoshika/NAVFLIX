@@ -587,6 +587,16 @@ function subtitleTracks(c, rel) {
   const hit = subCache.get(file);
   if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.tracks;
 
+  // Remembered from last time. Working this out means opening the video and
+  // reading a megabyte of it, so a whole season costs real seconds on a USB
+  // disk — and the answer only changes if the file itself does. Size and mtime
+  // say whether it has.
+  const saved = (c.progress && c.progress[rel] && c.progress[rel].tracks) || null;
+  if (saved && saved.mtimeMs === st.mtimeMs && saved.size === st.size) {
+    subCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, tracks: saved.list });
+    return saved.list;
+  }
+
   let all = [];
   try { all = probe.matroskaTracks(file); } catch (e) { all = []; }
 
@@ -606,6 +616,10 @@ function subtitleTracks(c, rel) {
   });
 
   subCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, tracks: tracks });
+  if (c.progress) {
+    rec(c, rel).tracks = { mtimeMs: st.mtimeMs, size: st.size, list: tracks };
+    save();
+  }
   return tracks;
 }
 
@@ -1761,7 +1775,18 @@ function orderedFiles(c) {
   return files;
 }
 
-function buildQueue(c) {
+// Listing a video's subtitle tracks means opening the video: a megabyte off the
+// disk per file, nine when the track table sits past the first one. It is by far
+// the most expensive thing a queue does, and almost nothing needs it — only the
+// collection you actually have open draws a subtitle dropdown.
+//
+// It used to happen for every collection on every /api/state, because the Library
+// grid and the tab counts are built from queues too. Measured on a 23-folder
+// library: 1,085 MB read to draw a list of folder names, of which 1,084 MB was
+// for folders that were not even on screen. On an external drive that is the
+// difference between a two-minute first load and an instant one. So `withSubs`
+// is opt-in, and the two callers that genuinely need it ask.
+function buildQueue(c, withSubs) {
   const files = orderedFiles(c);
   const series = seriesShape(c);
 
@@ -1783,7 +1808,7 @@ function buildQueue(c) {
       art: findArt(c, f.rel) ? '/api/art?c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
       backdrop: findBackdrop(c, f.rel) ? '/api/art?kind=bg&c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
       artTried: !!r.artTried,
-      subs: subsFor(c, f.rel),
+      subs: withSubs ? subsFor(c, f.rel) : null,
     };
   });
 }
@@ -2206,7 +2231,8 @@ function snapshot(local) {
   if (!c) return Object.assign(base, { active: null });
 
   const missing = !c.path || !fs.existsSync(c.path);
-  const queue = missing ? [] : buildQueue(c);
+  // The one queue that is actually looked at, so the one that pays for subtitles.
+  const queue = missing ? [] : buildQueue(c, true);
   const totalDuration = queue.reduce((a, m) => a + (m.duration || 0), 0);
   const watched = queue.reduce((a, m) => a + (m.done ? (m.duration || m.position) : m.position), 0);
   const days = new Set(c.history.map((h) => h.date));
@@ -2644,7 +2670,8 @@ const server = http.createServer(async (req, res) => {
       else {
         const raw = String(b.choice);
         const want = /^x\d+$/.test(raw) ? raw : Number(raw);
-        if (!item.subs.tracks.some((t) => t.id === want)) {
+        // One file's tracks, not the whole shelf's.
+        if (!subsFor(c, item.rel).tracks.some((t) => t.id === want)) {
           return json(res, 400, { error: 'That subtitle track is not available for this film.' });
         }
         r.sub = want;
