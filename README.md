@@ -39,6 +39,13 @@ The tab row shows the **three collections you played most recently**, newest
 first, plus whatever is open or playing — with a dozen folders added it was a wall of names you never
 clicked. Everything else lives in the Library.
 
+**Continue watching** sits above the shelves: at most three cards answering *what
+was I doing?* — the film you are part-way through, the episode you are part-way
+through, and the next episode of whichever show you watched last, with any spare
+slot filled from your most recent folders. The same title never appears twice.
+Clicking a card opens that folder with the title on the billboard; like clicking
+a poster, it does not start playing.
+
 The Library files each collection as a **film shelf** or a **TV series** based on
 what is in its folder, and offers *Everything / Films / TV series* buttons above
 the grid, with a **search box** beside them that narrows it as you type. The

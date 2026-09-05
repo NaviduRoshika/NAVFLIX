@@ -153,6 +153,44 @@
   .chip.empty:hover { color: var(--muted); border-color: rgba(255,255,255,.14); }
   .libempty { color: var(--muted); font-size: 14px; padding: 30px 0; }
 
+  /* ---- continue watching ---- */
+  .cwsec { margin: 0 0 34px; }
+  .cwhead {
+    display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--muted); font-weight: 700;
+  }
+  .cwgrid {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    max-width: 1080px;
+  }
+  .cwcard { cursor: pointer; }
+  .cwart {
+    position: relative; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden;
+    background-size: cover; background-position: center;
+    border: 1px solid rgba(255,255,255,.08); box-shadow: 0 8px 22px rgba(0,0,0,.5);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+  }
+  .cwcard:hover .cwart { transform: translateY(-4px); border-color: rgba(255,255,255,.32); box-shadow: var(--shadow); }
+  .cwscrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0,0,0,.8), rgba(0,0,0,.05) 55%); }
+  .cwtag {
+    position: absolute; left: 10px; top: 9px; z-index: 2; font-size: 10px; font-weight: 800;
+    letter-spacing: 1px; text-transform: uppercase; color: #fff;
+    background: var(--red); padding: 3px 8px; border-radius: 3px;
+  }
+  .cwtag.next { background: rgba(10,10,14,.78); color: #e9ecf3; backdrop-filter: blur(4px); }
+  .cwplay {
+    position: absolute; right: 10px; bottom: 10px; z-index: 2;
+    width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center;
+    background: rgba(255,255,255,.92); color: #101014; font-size: 14px; padding-left: 2px;
+  }
+  .cwbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 4px; background: rgba(255,255,255,.22); }
+  .cwbar i { display: block; height: 100%; background: var(--red); }
+  .cwname { font-weight: 700; font-size: 14.5px; margin: 10px 0 2px; }
+  .cwsub { color: var(--muted); font-size: 12.5px; }
+  .cwsub b { color: #cfd3dc; font-weight: 700; }
+
   /* results from inside the folders */
   .hitsec { margin: 34px 0 0; }
   .hithead {
@@ -1010,6 +1048,64 @@ function setLibFilter(f) {
   renderLibrary();
 }
 
+// Up to three things worth carrying on with: the film you are part-way through,
+// the episode you are part-way through, and the next episode of whatever show
+// you watched last. Those three answer "what was I doing?" without making you
+// remember which folder it was in.
+function continueWatching() {
+  const live = S.collections.filter((c) => c.lastPlayed && !c.missing && c.resume);
+  if (!live.length) return [];
+  const recent = live.slice().sort(byRecency);
+  const films = recent.filter((c) => !c.series);
+  const shows = recent.filter((c) => c.series);
+
+  const out = [];
+  const add = (c) => {
+    if (!c || out.length >= 3) return;
+    // The same episode can answer two of the three questions at once.
+    if (out.some((x) => x.id === c.id && x.resume.rel === c.resume.rel)) return;
+    out.push(c);
+  };
+
+  add(films.find((c) => c.resume.started) || films[0]);
+  add(shows.find((c) => c.resume.started));
+  add(shows[0]);
+  // Whatever is left over, newest first, so the row is not half empty.
+  recent.forEach(add);
+  return out.slice(0, 3);
+}
+
+function renderContinue() {
+  const list = continueWatching();
+  if (!list.length) return '';
+
+  let h = '<div class="cwsec"><div class="cwhead">Continue watching</div><div class="cwgrid">';
+  h += list.map((c) => {
+    const r = c.resume;
+    const pct = r.started && r.duration > 0 ? Math.min(100, (r.position / r.duration) * 100) : 0;
+    const tag = r.started ? 'Resume' : (c.series ? 'Next episode' : 'Up next');
+    let line;
+    if (r.started && r.duration > 0) line = '<b>' + mins(r.duration - r.position) + ' left</b>';
+    else if (r.started) line = '<b>Resumes at ' + hms(r.position) + '</b>';
+    else if (r.duration > 0) line = mins(r.duration);
+    else line = 'Not started';
+
+    return '<div class="cwcard" data-c="' + c.id + '" data-i="' + r.index + '">' +
+      '<div class="cwart" style="' + (r.art
+        ? "background-image:url('" + r.art + "')"
+        : 'background-image:' + fakeArt(r.title)) + '">' +
+        '<div class="cwscrim"></div>' +
+        '<div class="cwtag' + (r.started ? '' : ' next') + '">' + tag + '</div>' +
+        '<div class="cwplay">&#9654;</div>' +
+        (pct > 0 ? '<div class="cwbar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' : '') +
+      '</div>' +
+      '<div class="cwname">' + esc(r.title) + '</div>' +
+      '<div class="cwsub">' + esc(c.name) + ' &middot; ' + line + '</div>' +
+    '</div>';
+  }).join('');
+  return h + '</div></div>';
+}
+
 function renderLibrary() {
   const keepY = scrollY;     // a poll refresh must not jump you back to the top
   // The page is rebuilt on every keystroke and on every poll, so a search box
@@ -1055,6 +1151,10 @@ function renderLibrary() {
       (libQuery ? '<span class="x" id="libClear" title="Clear">&#10005;</span>' : '') +
       '</span></div>';
   }
+
+  // Only on the plain view: filtered or searched, the row would be answering a
+  // question you are no longer asking.
+  if (!q && libFilter === 'all') h += renderContinue();
 
   h += '<div class="libgrid">';
 
@@ -1135,6 +1235,9 @@ function renderLibrary() {
 
   document.querySelectorAll('.libcard[data-id]').forEach((el) => {
     el.onclick = () => select(el.dataset.id);
+  });
+  document.querySelectorAll('.cwcard[data-c]').forEach((el) => {
+    el.onclick = () => openHit(el.dataset.c, Number(el.dataset.i));
   });
   document.querySelectorAll('.chip[data-filter]').forEach((el) => {
     el.onclick = () => setLibFilter(el.dataset.filter);
@@ -1640,6 +1743,7 @@ const GUIDE = [
   ['browse', 'Getting around', [
     ['Library', 'The <b>☰ Library</b> link, or the NAVFLIX wordmark, shows every folder as a card with its ' +
       'cover, progress and what is next. Better than the tab row once you have a few.'],
+    ['Continue watching', 'Three cards above the shelves, answering “what was I doing?” without making you remember which folder it was in: the film you are part-way through, the episode you are part-way through, and the next episode of whichever show you watched last. Any spare slot is filled from your most recent folders, and the same title never appears twice. A card marked <b>Resume</b> carries a progress bar and says how much is left; <b>Next episode</b> and <b>Up next</b> have not been started. Clicking one opens that folder with the title on the billboard — it does not start playing. The row is hidden while you are searching or filtering, since it answers a question you are no longer asking.'],
     ['The tab row', 'It carries the three collections you played most recently, <b>newest first</b>, plus whatever you have open or playing. Everything else lives in the <b>\u2630 Library</b>, so adding a tenth folder never buries the ones you watch.'],
     ['Search', 'The box beside those buttons narrows the grid as you type, matching the folder name and what is up next in it. The counts on the buttons follow the search, so you can see how the matches split between films and shows. <b>Esc</b> clears it.'],
     ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives — searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],

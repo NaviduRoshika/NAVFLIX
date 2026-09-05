@@ -2204,6 +2204,25 @@ function collectionCard(c) {
       if (!pick) return null;
       return pick.backdrop || pick.art || null;
     })(),
+    // The one thing this collection would play next, described well enough for
+    // Continue watching to draw it without asking for the whole queue.
+    resume: (function () {
+      const pick = queue[cur >= 0 ? cur : 0];
+      if (!pick) return null;
+      return {
+        index: pick.index,
+        rel: pick.rel,
+        title: pick.title,
+        season: pick.season,
+        episode: pick.episode,
+        position: pick.position,
+        duration: pick.duration,
+        // "Started" means part-way through, which is a different offer from
+        // "here is the next one" and the two are labelled differently.
+        started: pick.position > 0 && !pick.done,
+        art: pick.backdrop || pick.art || null,
+      };
+    })(),
     seasons: shapeOf(c, queue, missing).seasons,
     fullMode: !!c.fullMode,
     sittingLength: Math.round(sittingLength(c)),
