@@ -102,7 +102,23 @@
   .libwrap { padding: 104px 44px 80px; }
   .libtitle { font-size: 30px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.6px; }
   .libintro { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
-  .libfilter { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 26px; }
+  .libfilter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 26px; }
+  .libsearch { position: relative; margin-left: auto; }
+  .libsearch input[type=text] {
+    width: 250px; padding: 7px 32px 7px 14px; border-radius: 99px; font-size: 13px;
+    background: rgba(30,30,38,.9); border-color: rgba(255,255,255,.14);
+  }
+  .libsearch input::placeholder { color: var(--muted); }
+  .libsearch .x {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1;
+    padding: 5px 7px; border-radius: 99px;
+  }
+  .libsearch .x:hover { color: #fff; background: rgba(255,255,255,.1); }
+  @media (max-width: 620px) {
+    .libsearch { margin-left: 0; width: 100%; }
+    .libsearch input[type=text] { width: 100%; }
+  }
 
   /* The two things you need on the sofa, given equal billing. */
   .rgrid { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 10px; }
@@ -136,6 +152,39 @@
   .chip.empty { opacity: .4; cursor: default; }
   .chip.empty:hover { color: var(--muted); border-color: rgba(255,255,255,.14); }
   .libempty { color: var(--muted); font-size: 14px; padding: 30px 0; }
+
+  /* results from inside the folders */
+  .hitsec { margin: 34px 0 0; }
+  .hithead {
+    display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--muted); font-weight: 700;
+  }
+  .hithead .n { letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .hitgrid { display: flex; flex-direction: column; gap: 7px; }
+  .hitrow {
+    display: flex; gap: 13px; align-items: center; padding: 8px 13px 8px 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: #0e0e13; cursor: pointer;
+  }
+  .hitrow:hover { border-color: rgba(255,255,255,.28); background: #131319; }
+  .hitart {
+    width: 84px; aspect-ratio: 16/9; border-radius: 5px; flex: none;
+    background-size: cover; background-position: center; border: 1px solid rgba(255,255,255,.08);
+  }
+  .hitrow .t { flex: 1; min-width: 0; }
+  .hitrow .t b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hitrow .t > span { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hitrow .in { color: #cfd3dc; }
+  .hitrow .state {
+    flex: none; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    padding: 3px 8px; border-radius: 4px; background: #1e1e26; color: #c9cedb;
+    border: 1px solid rgba(255,255,255,.1); white-space: nowrap;
+  }
+  .hitrow .state.done { background: #0d2f22; color: #7ee0b0; border-color: #1c5540; }
+  @media (max-width: 620px) {
+    .hitart { width: 64px; }
+    .hitrow .state { display: none; }
+  }
   .libgrid {
     display: grid; gap: 24px 18px;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -910,6 +959,26 @@ function patchLive() {
 // row of tabs stops being scannable — this is the place to browse them.
 // all | films | series. Lives outside renderLibrary so a poll refresh keeps it.
 let libFilter = 'all';
+let libQuery = '';   // the search box, for the same reason
+let libHits = null;  // { q, hits, total, folders } from /api/search
+let libHitTimer = null;
+
+// Searching inside the folders is a round trip, so it is debounced and the
+// result is tagged with the query it answers — a slow reply for "ir" must not
+// land on top of the results for "iron".
+function searchInside() {
+  clearTimeout(libHitTimer);
+  const q = libQuery.trim();
+  if (q.length < 2) { libHits = null; return; }
+  libHitTimer = setTimeout(async () => {
+    let data;
+    try { data = await api('/api/search?q=' + encodeURIComponent(q)); }
+    catch (e) { return; }
+    if (data.q !== libQuery.trim().toLowerCase()) return;   // you have typed on
+    libHits = data;
+    if (view === 'library') renderLibrary();
+  }, 220);
+}
 
 function setLibFilter(f) {
   libFilter = f;
@@ -918,22 +987,35 @@ function setLibFilter(f) {
 
 function renderLibrary() {
   const keepY = scrollY;     // a poll refresh must not jump you back to the top
-  const all = S.collections;
+  // The page is rebuilt on every keystroke and on every poll, so a search box
+  // being typed into has to be handed its focus and caret back afterwards.
+  const typing = document.activeElement && document.activeElement.id === 'libSearch';
+  const caret = typing ? document.activeElement.selectionStart : 0;
+
+  const every = S.collections;
+  const q = libQuery.trim().toLowerCase();
+  // Matching what is up next as well as the folder name, so looking for a film
+  // you are part-way through finds the folder it lives in.
+  const all = q
+    ? every.filter((c) => (c.name + ' ' + (c.currentTitle || '')).toLowerCase().indexOf(q) !== -1)
+    : every;
   const films = all.filter((c) => !c.series);
   const series = all.filter((c) => c.series);
   const buckets = { all: all, films: films, series: series };
-  // The counts shift when a drive comes or goes, so a filter can end up on an
-  // empty bucket. Drop back to Everything rather than showing a blank page.
+  // The counts shift when a drive comes or goes or the search narrows, so a
+  // filter can end up on an empty bucket. Drop back to Everything rather than
+  // showing a blank page.
   if (!(buckets[libFilter] || []).length) libFilter = 'all';
   const list = buckets[libFilter] || all;
 
   let h = '<div class="libwrap"><h1 class="libtitle">Your library</h1>' +
-    '<p class="libintro">' + all.length + ' folder' + (all.length === 1 ? '' : 's') +
-    ' &middot; pick one to carry on</p>';
+    '<p class="libintro">' + (q
+      ? all.length + ' of ' + every.length + ' folders match'
+      : every.length + ' folder' + (every.length === 1 ? '' : 's') + ' &middot; pick one to carry on') + '</p>';
 
   // Always shown once there is more than one folder. Hiding it when a bucket
   // happened to be empty just meant hunting for a control that was not there.
-  if (all.length > 1) {
+  if (every.length > 1) {
     h += '<div class="libfilter">' +
       [['all', 'Everything', all.length],
        ['films', 'Films', films.length],
@@ -942,7 +1024,11 @@ function renderLibrary() {
         return '<button class="' + cls + '" data-filter="' + f[0] + '"' +
           (f[2] ? '' : ' disabled') + '>' + f[1] +
           '<span class="n">' + f[2] + '</span></button>';
-      }).join('') + '</div>';
+      }).join('') +
+      '<span class="libsearch"><input type="text" id="libSearch" placeholder="Search your folders\u2026" ' +
+      'value="' + esc(libQuery) + '">' +
+      (libQuery ? '<span class="x" id="libClear" title="Clear">&#10005;</span>' : '') +
+      '</span></div>';
   }
 
   h += '<div class="libgrid">';
@@ -975,13 +1061,50 @@ function renderLibrary() {
 
   // The Add tile belongs with everything, not tucked at the end of a filtered
   // slice where it looks like one of the matches.
-  if (libFilter === 'all') {
+  if (libFilter === 'all' && !q) {
     h += '<div class="libcard libadd" onclick="openAdd()">' +
       '<div class="libart addart">+</div><div class="libname">Add a folder</div>' +
       '<div class="libsub">Films or a TV show</div></div>';
   }
 
-  h += '</div></div>';
+  h += '</div>';
+  if (q && !list.length) {
+    h += '<div class="libempty">No folder is called \u201c' + esc(libQuery.trim()) + '\u201d.</div>';
+  }
+
+  // What is inside the folders, which is usually what you were after.
+  if (q.length >= 2) {
+    const found = libHits && libHits.q === q ? libHits : null;
+    h += '<div class="hitsec">';
+    if (!found) {
+      h += '<div class="hithead">Looking inside your folders\u2026</div>';
+    } else if (!found.total) {
+      h += '<div class="hithead">Inside your folders' +
+        '<span class="n">nothing found</span></div>';
+    } else {
+      h += '<div class="hithead">Inside your folders<span class="n">' +
+        found.total + ' title' + (found.total === 1 ? '' : 's') +
+        ' in ' + found.folders + ' folder' + (found.folders === 1 ? '' : 's') +
+        (found.total > found.hits.length ? ' \u00b7 showing the first ' + found.hits.length : '') +
+        '</span></div><div class="hitgrid">';
+      h += found.hits.map((m) => {
+        const img = m.backdrop || m.art;
+        let state = 'Not started';
+        if (m.done) state = 'Finished';
+        else if (m.position > 0 && m.duration > 0) state = mins(m.duration - m.position) + ' left';
+        else if (m.duration > 0) state = mins(m.duration);
+        return '<div class="hitrow" data-c="' + m.collectionId + '" data-i="' + m.index + '">' +
+          '<div class="hitart" style="' + (img ? "background-image:url('" + img + "')" :
+            'background-image:' + fakeArt(m.title)) + '"></div>' +
+          '<div class="t"><b>' + esc(m.title) + '</b>' +
+          '<span>in <span class="in">' + esc(m.collection) + '</span> &middot; ' + esc(m.file) + '</span></div>' +
+          '<span class="state' + (m.done ? ' done' : '') + '">' + state + '</span></div>';
+      }).join('');
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
   $('#app').innerHTML = h;
   scrollTo({ top: keepY, behavior: 'instant' });
 
@@ -991,6 +1114,46 @@ function renderLibrary() {
   document.querySelectorAll('.chip[data-filter]').forEach((el) => {
     el.onclick = () => setLibFilter(el.dataset.filter);
   });
+
+  document.querySelectorAll('.hitrow[data-c]').forEach((el) => {
+    el.onclick = () => openHit(el.dataset.c, Number(el.dataset.i));
+  });
+
+  const box = $('#libSearch');
+  if (box) {
+    box.oninput = () => { libQuery = box.value; searchInside(); renderLibrary(); };
+    box.onkeydown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); clearLibQuery(); }
+    };
+    if (typing) { box.focus(); box.setSelectionRange(caret, caret); }
+  }
+  const clear = $('#libClear');
+  if (clear) clear.onclick = () => clearLibQuery();
+}
+
+function clearLibQuery() {
+  libQuery = '';
+  libHits = null;
+  clearTimeout(libHitTimer);
+  renderLibrary();
+  const box = $('#libSearch');
+  if (box) box.focus();
+}
+
+// Open the folder a result lives in and put that title on the billboard. It does
+// not start playing: the same rule as clicking a poster.
+async function openHit(id, index) {
+  try {
+    if (!S || S.activeId !== id) S = await post('/api/collections/select', { id: id });
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  const m = S.active && S.active.queue[index];
+  if (m) selected[id] = { i: index, wasDone: !!m.done };
+  view = 'collection';
+  pushNav();
+  showView('collection');
 }
 
 /* ------------------------------------------------------------------ history
@@ -1452,7 +1615,10 @@ const GUIDE = [
   ['browse', 'Getting around', [
     ['Library', 'The <b>☰ Library</b> link, or the NAVFLIX wordmark, shows every folder as a card with its ' +
       'cover, progress and what is next. Better than the tab row once you have a few.'],
-    ['The tab row', 'It carries the three collections you played most recently, <b>newest first</b>, plus whatever you have open or playing. The rest sit behind <b>+n more</b>, which opens the Library. Adding a tenth folder no longer buries the ones you watch.'],
+    ['The tab row', 'It carries the three collections you played most recently, <b>newest first</b>, plus whatever you have open or playing. Everything else lives in the <b>\u2630 Library</b>, so adding a tenth folder never buries the ones you watch.'],
+    ['Search', 'The box beside those buttons narrows the grid as you type, matching the folder name and what is up next in it. The counts on the buttons follow the search, so you can see how the matches split between films and shows. <b>Esc</b> clears it.'],
+    ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives — searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],
+    ['What search cannot see', 'A folder on a drive that is unplugged is skipped, since its file list cannot be read. Cast and directors are not searched from here either — that lives in <b>Details</b>, which searches one collection at a time.'],
     ['Films or series', 'Above the Library grid sit <b>Everything</b> / <b>Films</b> / <b>TV series</b> buttons. A collection is filed by what is actually in its folder. A folder on a drive that is currently unplugged is still filed correctly, because the filenames it saw last time are enough to tell episodes from films. A button with nothing behind it is greyed out rather than hidden.'],
     ['Stop the extra tab', 'Once you launch from the installed icon, the browser window the server opens on startup is just clutter. Turn off <b>Open a window when NAVFLIX starts</b> in Settings. The server still prints its address, so you can always get back by hand.'],
     ['Install it as an app', 'In Chrome or Edge, the address bar shows an install icon while NAVFLIX is open. Installing gives it a Start menu entry and its own window with no address bar and no browser buttons. It still needs the server running, so keep starting it the usual way.'],
@@ -1590,7 +1756,7 @@ function byRecency(a, b) {
 
 function tabsToShow() {
   const all = S.collections;
-  if (all.length <= TAB_LIMIT) return { shown: all.slice().sort(byRecency), hidden: 0 };
+  if (all.length <= TAB_LIMIT) return all.slice().sort(byRecency);
 
   const recent = all.slice().sort(byRecency).slice(0, TAB_LIMIT);
 
@@ -1610,7 +1776,7 @@ function tabsToShow() {
   // long as it is playing. The one reorder happens when you start playing a
   // different folder, which is the moment you would want it to.
   recent.sort(byRecency);
-  return { shown: recent, hidden: all.length - recent.length };
+  return recent;
 }
 
 function renderTabs() {
@@ -1623,18 +1789,13 @@ function renderTabs() {
 
   const t = $('#tabs');
   if (!S || !S.collections.length) { t.innerHTML = ''; return; }
-  const pick = tabsToShow();
-  t.innerHTML = pick.shown.map((c) => {
+  t.innerHTML = tabsToShow().map((c) => {
     let tag = '<span class="c">' + c.done + '/' + c.total + '</span>';
     if (c.playing) tag = '<span class="c live">&#9679; playing</span>';
     else if (c.missing) tag = '<span class="c warn">&#9888;</span>';
     return '<div class="navlink ' + (c.id === S.activeId && view === 'collection' ? 'on' : '') + '" data-id="' + c.id + '">' +
       esc(c.name) + tag + '</div>';
   }).join('') +
-    (pick.hidden
-      ? '<div class="navlink" onclick="goLibrary()" style="color:var(--muted)" ' +
-        'title="The rest of your folders live in the Library">+' + pick.hidden + ' more</div>'
-      : '') +
     '<div class="navlink" onclick="openAdd()" style="color:var(--muted)">+ Add</div>';
   t.querySelectorAll('.navlink[data-id]').forEach((el) => { el.onclick = () => select(el.dataset.id); });
 }

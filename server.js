@@ -1439,6 +1439,61 @@ async function runArtJob(c, force) {
   }
 }
 
+// ---------------------------------------------------------------- search
+//
+// Finding a title across every folder at once. Deliberately not buildQueue: that
+// resolves artwork, subtitles and progress for every file, and doing it for nine
+// hundred files on each keystroke would be absurd. This walks the cached
+// directory listing and compares names, nothing more.
+
+const SEARCH_LIMIT = 60;
+
+function searchTitles(q) {
+  const needle = String(q || '').trim().toLowerCase();
+  // One letter matches most of a library, which is neither useful nor cheap.
+  if (needle.length < 2) return { q: needle, hits: [], total: 0, folders: 0 };
+
+  const hits = [];
+  let total = 0;
+  let folders = 0;
+
+  for (const c of state.collections) {
+    if (!c.path || !fs.existsSync(c.path)) continue;
+    const series = !!seriesShape(c);
+    let matchedHere = false;
+
+    orderedFiles(c).forEach((f, i) => {
+      const title = displayTitle(c, f.rel, series);
+      // The filename is searched too: a release name carries the year and the
+      // original title, which is often what you half-remember.
+      if ((title + ' ' + f.rel).toLowerCase().indexOf(needle) === -1) return;
+      total++;
+      matchedHere = true;
+      if (hits.length >= SEARCH_LIMIT) return;
+
+      // Read the record without creating one — searching should not write.
+      const r = (c.progress && c.progress[f.rel]) || null;
+      hits.push({
+        collectionId: c.id,
+        collection: c.name,
+        index: i,
+        rel: f.rel,
+        title: title,
+        file: f.rel.split('/').pop(),
+        series: series,
+        done: !!(r && r.done),
+        position: r ? r.position : 0,
+        duration: r ? r.duration : 0,
+        art: findArt(c, f.rel) ? '/api/art?c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
+        backdrop: findBackdrop(c, f.rel) ? '/api/art?kind=bg&c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
+      });
+    });
+    if (matchedHere) folders++;
+  }
+
+  return { q: needle, hits: hits, total: total, folders: folders };
+}
+
 // ---------------------------------------------------------------- details
 //
 // Two very different kinds of fact about the same film, gathered by one job.
@@ -1688,19 +1743,27 @@ function rec(c, rel) {
   return c.progress[rel];
 }
 
-function buildQueue(c) {
+// The order the queue numbers files in. Search needs the same numbering to hand
+// back an index that opens the film you clicked, so both go through here rather
+// than each sorting for itself and drifting apart later.
+function orderedFiles(c) {
   const files = scanLibrary(c.path).slice();
-  const series = seriesShape(c);
 
   // Filename order is usually right, but season/episode order is definitive —
   // it survives inconsistent naming across seasons.
-  if (series) {
+  if (seriesShape(c)) {
     files.sort((a, b) => {
       const pa = parseEpisode(a.rel), pb = parseEpisode(b.rel);
       if (!pa || !pb) return collator.compare(a.rel, b.rel);
       return (pa.season - pb.season) || (pa.episode - pb.episode) || collator.compare(a.rel, b.rel);
     });
   }
+  return files;
+}
+
+function buildQueue(c) {
+  const files = orderedFiles(c);
+  const series = seriesShape(c);
 
   return files.map((f, i) => {
     const r = rec(c, f.rel);
@@ -2446,6 +2509,10 @@ const server = http.createServer(async (req, res) => {
       }
       play(c, idx, b.extraSeconds);
       return json(res, 200, snapshot(local));
+    }
+
+    if (p === '/api/search') {
+      return json(res, 200, searchTitles(url.searchParams.get('q') || ''));
     }
 
     if (p === '/api/details') {

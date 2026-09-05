@@ -37,11 +37,24 @@ running one one click away.
 
 The tab row shows the **three collections you played most recently**, newest
 first, plus whatever is open or playing — with a dozen folders added it was a wall of names you never
-clicked. The rest sit behind **+n more**, which opens the Library.
+clicked. Everything else lives in the Library.
 
 The Library files each collection as a **film shelf** or a **TV series** based on
 what is in its folder, and offers *Everything / Films / TV series* buttons above
-the grid.
+the grid, with a **search box** beside them that narrows it as you type. The
+button counts follow the search, and **Esc** clears it.
+
+Underneath, **Inside your folders** lists every title that matches, wherever it
+lives. Searching *iron* finds the Iron Man films across two shelves and
+*S08E06 · The Iron Throne* in Game of Thrones — episode names are searched, and
+so are filenames, which is often where the year and the original title sit.
+Clicking a result opens that folder with the title on the billboard; like
+clicking a poster, it does not start playing.
+
+This does not walk the disk on every keystroke: it compares names against the
+directory listing already cached for the queue, so a library of nine hundred
+files answers in well under a tenth of a second. A folder on an unplugged drive
+is skipped, because its file list cannot be read.
 
 This keeps working with the folder offline. Every filename the app has scanned is
 recorded in `data/state.json`, and re-running the episode test over those names
