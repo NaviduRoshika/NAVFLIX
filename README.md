@@ -48,8 +48,15 @@ a poster, it does not start playing.
 
 The Library files each collection as a **film shelf** or a **TV series** based on
 what is in its folder, and offers *Everything / Films / TV series* buttons above
-the grid, with a **search box** beside them that narrows it as you type. The
-button counts follow the search, and **Esc** clears it.
+the grid, plus **Watched / Not watched** beside them. The two groups ask
+different questions and combine, so *TV series* + *Not watched* is the shows you
+have yet to start. *Watched* means a folder with nothing left in it and
+everything else counts as not watched, so the pair always adds up to the whole
+shelf; each button's count is what you would get by pressing it. Pressing the one
+already on turns it off.
+
+A **search box** sits beside them and narrows the grid as you type. All the
+counts follow the search, and **Esc** clears it.
 
 Underneath, **Inside your folders** lists every title that matches, wherever it
 lives. Searching *iron* finds the Iron Man films across two shelves and
@@ -478,6 +485,11 @@ reports them.
 - **✓ Mark as watched** records a title as done and moves the queue on, on the
   billboard and on every card. Pressing it on something already watched puts it
   back. **Restart** rewinds one to zero.
+- **✓ Watch season** sits in each season's heading and ticks off the lot — for a
+  show you have already seen and only want NAVFLIX to track from here on. Once a
+  season is complete the button becomes **↻ Unwatch season**, which puts every
+  episode back to not started and clears any resume points inside it. Both ask
+  first, and neither touches another season.
 - **Play** on any row jumps the queue without losing anyone's position.
 - When a sitting ends the button reads *Next 40m* (or whatever you set). Press it
   as many times as you like — nothing stops you at a daily total.

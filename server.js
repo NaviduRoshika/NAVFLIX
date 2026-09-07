@@ -1268,6 +1268,12 @@ function serveArt(res, c, rel, kind) {
 
   const img = kind === 'bg' ? findBackdrop(c, rel) : findArt(c, rel);
   if (!img) { res.writeHead(404); return res.end(); }
+
+  // Safe to cache hard: every address artUrl() hands out carries the mtime of
+  // the file it resolved to, so the moment the picture changes the address does
+  // too. Without that stamp this header was the bug — an episode served the
+  // show's image as a stand-in kept showing it for a day after its own still
+  // had arrived.
   res.writeHead(200, {
     'Content-Type': IMG_MIME[path.extname(img).toLowerCase()] || 'application/octet-stream',
     'Cache-Control': 'public, max-age=86400',
@@ -1533,8 +1539,8 @@ function searchTitles(q) {
         done: !!(r && r.done),
         position: r ? r.position : 0,
         duration: r ? r.duration : 0,
-        art: findArt(c, f.rel) ? '/api/art?c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
-        backdrop: findBackdrop(c, f.rel) ? '/api/art?kind=bg&c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
+        art: artUrl(c, f.rel, ''),
+        backdrop: artUrl(c, f.rel, 'bg'),
       });
     });
     if (matchedHere) folders++;
@@ -1779,6 +1785,26 @@ function detailsFor(c) {
   };
 }
 
+// The address of a piece of artwork, or null when there is none.
+//
+// The stamp on the end is the mtime of the file this actually resolved to, and
+// it is the whole point of this function. An episode with no still yet is served
+// the show's image as a stand-in; the browser then caches that under the
+// episode's address, and when the real still arrives minutes later the address
+// has not changed, so the stale picture stays. A whole season of identical
+// frames, and no amount of reloading shifts it: these are fetched by script
+// after the page has loaded, which a hard reload does not reach.
+//
+// Change the file, change the address.
+function artUrl(c, rel, kind) {
+  const found = kind === 'bg' ? findBackdrop(c, rel) : findArt(c, rel);
+  if (!found) return null;
+  let stamp = 0;
+  try { stamp = Math.round(fs.statSync(found).mtimeMs); } catch (e) { /* raced a download */ }
+  return '/api/art?' + (kind === 'bg' ? 'kind=bg&' : '') +
+    'c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(rel) + '&v=' + stamp;
+}
+
 // encodeURIComponent leaves ( ) ' * ! alone, and those break CSS url() when the
 // address is dropped into a background-image. Encode them too.
 function urlPart(s) {
@@ -1840,8 +1866,8 @@ function buildQueue(c, withSubs) {
       duration: r.duration,
       done: r.done,
       lastPlayed: r.lastPlayed,
-      art: findArt(c, f.rel) ? '/api/art?c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
-      backdrop: findBackdrop(c, f.rel) ? '/api/art?kind=bg&c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(f.rel) : null,
+      art: artUrl(c, f.rel, ''),
+      backdrop: artUrl(c, f.rel, 'bg'),
       artTried: !!r.artTried,
       subs: withSubs ? subsFor(c, f.rel) : null,
     };
@@ -2818,6 +2844,32 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/mark' && req.method === 'POST') {
       const b = await readBody(req);
       const c = target(b);
+
+      // A whole season at once. Addressed by season number rather than by a list
+      // of indexes, so it cannot act on a stale idea of what is in the folder.
+      if (b.season != null) {
+        const want = Number(b.season);
+        const done = b.done !== false;
+        let n = 0;
+        for (const m of buildQueue(c)) {
+          if (m.season !== want) continue;
+          const r = rec(c, m.rel);
+          if (done) {
+            r.done = true;
+            if (r.duration) r.position = r.duration;
+          } else {
+            // The inverse people expect is "put the season back as if unseen",
+            // which means clearing the resume points too.
+            r.done = false;
+            r.position = 0;
+          }
+          n++;
+        }
+        if (!n) return json(res, 400, { error: 'No episodes in that season.' });
+        saveNow();
+        return json(res, 200, Object.assign(snapshot(local), { changed: n }));
+      }
+
       const item = buildQueue(c)[Number(b.index)];
       if (!item) return json(res, 400, { error: 'Unknown episode.' });
       const r = rec(c, item.rel);

@@ -103,6 +103,12 @@
   .libtitle { font-size: 30px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.6px; }
   .libintro { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
   .libfilter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 26px; }
+  /* The two groups answer different questions, so they get a hairline between
+     them rather than looking like five choices of one kind. */
+  .libfilter .sep {
+    width: 1px; align-self: stretch; margin: 2px 4px;
+    background: rgba(255,255,255,.14);
+  }
   .libsearch { position: relative; margin-left: auto; }
   .libsearch input[type=text] {
     width: 250px; padding: 7px 32px 7px 14px; border-radius: 99px; font-size: 13px;
@@ -1076,6 +1082,9 @@ function patchLive() {
 // row of tabs stops being scannable — this is the place to browse them.
 // all | films | series. Lives outside renderLibrary so a poll refresh keeps it.
 let libFilter = 'all';
+// any | done | todo. A second question about the same shelves — "which kind"
+// and "how far through" are independent, so these combine rather than replace.
+let libStatus = 'any';
 let libQuery = '';   // the search box, for the same reason
 let libHits = null;  // { q, hits, total, folders } from /api/search
 let libHitTimer = null;
@@ -1100,6 +1109,20 @@ function searchInside() {
 function setLibFilter(f) {
   libFilter = f;
   renderLibrary();
+}
+
+// Clicking the one already on turns it off, which is how you get back to "any"
+// without a third button to explain.
+function setLibStatus(v) {
+  libStatus = libStatus === v ? 'any' : v;
+  renderLibrary();
+}
+
+// Finished means nothing left in it. Everything else \u2014 untouched or half way
+// \u2014 still has something to watch, so the two divide the shelf between them and
+// the counts always add up.
+function libFinished(c) {
+  return c.total > 0 && c.done >= c.total;
 }
 
 // Up to three things worth carrying on with: the film you are part-way through,
@@ -1174,14 +1197,28 @@ function renderLibrary() {
   const all = q
     ? every.filter((c) => (c.name + ' ' + (c.currentTitle || '')).toLowerCase().indexOf(q) !== -1)
     : every;
-  const films = all.filter((c) => !c.series);
-  const series = all.filter((c) => c.series);
-  const buckets = { all: all, films: films, series: series };
+  // Each group counts what it would give you with the *other* group applied, so
+  // the numbers on the buttons are what you actually get by pressing them.
+  const byStatus = (c) => libStatus === 'any' ||
+    (libStatus === 'done' ? libFinished(c) : !libFinished(c));
+  const byType = (c) => libFilter === 'all' ||
+    (libFilter === 'films' ? !c.series : !!c.series);
+
+  const forType = all.filter(byStatus);
+  const films = forType.filter((c) => !c.series);
+  const series = forType.filter((c) => c.series);
+  const buckets = { all: forType, films: films, series: series };
   // The counts shift when a drive comes or goes or the search narrows, so a
   // filter can end up on an empty bucket. Drop back to Everything rather than
   // showing a blank page.
   if (!(buckets[libFilter] || []).length) libFilter = 'all';
-  const list = buckets[libFilter] || all;
+
+  const forStatus = all.filter(byType);
+  const doneCount = forStatus.filter(libFinished).length;
+  const todoCount = forStatus.length - doneCount;
+  if ((libStatus === 'done' && !doneCount) || (libStatus === 'todo' && !todoCount)) libStatus = 'any';
+
+  const list = (buckets[libFilter] || forType).filter(byStatus);
 
   let h = '<div class="libwrap"><h1 class="libtitle">Your library</h1>' +
     '<p class="libintro">' + (q
@@ -1192,11 +1229,18 @@ function renderLibrary() {
   // happened to be empty just meant hunting for a control that was not there.
   if (every.length > 1) {
     h += '<div class="libfilter">' +
-      [['all', 'Everything', all.length],
+      [['all', 'Everything', forType.length],
        ['films', 'Films', films.length],
        ['series', 'TV series', series.length]].map((f) => {
         const cls = 'chip' + (libFilter === f[0] ? ' on' : '') + (f[2] ? '' : ' empty');
         return '<button class="' + cls + '" data-filter="' + f[0] + '"' +
+          (f[2] ? '' : ' disabled') + '>' + f[1] +
+          '<span class="n">' + f[2] + '</span></button>';
+      }).join('') +
+      '<span class="sep"></span>' +
+      [['done', 'Watched', doneCount], ['todo', 'Not watched', todoCount]].map((f) => {
+        const cls = 'chip' + (libStatus === f[0] ? ' on' : '') + (f[2] ? '' : ' empty');
+        return '<button class="' + cls + '" data-status="' + f[0] + '"' +
           (f[2] ? '' : ' disabled') + '>' + f[1] +
           '<span class="n">' + f[2] + '</span></button>';
       }).join('') +
@@ -1208,7 +1252,7 @@ function renderLibrary() {
 
   // Only on the plain view: filtered or searched, the row would be answering a
   // question you are no longer asking.
-  if (!q && libFilter === 'all') h += renderContinue();
+  if (!q && libFilter === 'all' && libStatus === 'any') h += renderContinue();
 
   h += '<div class="libgrid">';
 
@@ -1240,15 +1284,17 @@ function renderLibrary() {
 
   // The Add tile belongs with everything, not tucked at the end of a filtered
   // slice where it looks like one of the matches.
-  if (libFilter === 'all' && !q) {
+  if (libFilter === 'all' && libStatus === 'any' && !q) {
     h += '<div class="libcard libadd" onclick="openAdd()">' +
       '<div class="libart addart">+</div><div class="libname">Add a folder</div>' +
       '<div class="libsub">Films or a TV show</div></div>';
   }
 
   h += '</div>';
-  if (q && !list.length) {
-    h += '<div class="libempty">No folder is called \u201c' + esc(libQuery.trim()) + '\u201d.</div>';
+  if (!list.length) {
+    h += '<div class="libempty">' + (q
+      ? 'No folder is called \u201c' + esc(libQuery.trim()) + '\u201d.'
+      : 'Nothing here matches those filters.') + '</div>';
   }
 
   // What is inside the folders, which is usually what you were after.
@@ -1295,6 +1341,9 @@ function renderLibrary() {
   });
   document.querySelectorAll('.chip[data-filter]').forEach((el) => {
     el.onclick = () => setLibFilter(el.dataset.filter);
+  });
+  document.querySelectorAll('.chip[data-status]').forEach((el) => {
+    el.onclick = () => setLibStatus(el.dataset.status);
   });
 
   document.querySelectorAll('.hitrow[data-c]').forEach((el) => {
@@ -1802,10 +1851,12 @@ const GUIDE = [
     ['Search', 'The box beside those buttons narrows the grid as you type, matching the folder name and what is up next in it. The counts on the buttons follow the search, so you can see how the matches split between films and shows. <b>Esc</b> clears it.'],
     ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives — searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],
     ['What search cannot see', 'A folder on a drive that is unplugged is skipped, since its file list cannot be read. Cast and directors are not searched from here either — that lives in <b>Details</b>, which searches one collection at a time.'],
+    ['Watched or not', 'The second pair of buttons — <b>Watched</b> and <b>Not watched</b> — asks a different question from the first, so the two combine: <i>TV series</i> plus <i>Not watched</i> is the shows you have yet to start. <b>Watched</b> means a folder with nothing left in it; everything else, untouched or half way through, counts as not watched, so the two numbers always add up to the whole shelf. Pressing the one already on turns it off again.'],
     ['Films or series', 'Above the Library grid sit <b>Everything</b> / <b>Films</b> / <b>TV series</b> buttons. A collection is filed by what is actually in its folder. A folder on a drive that is currently unplugged is still filed correctly, because the filenames it saw last time are enough to tell episodes from films. A button with nothing behind it is greyed out rather than hidden.'],
     ['Stop the extra tab', 'Once you launch from the installed icon, the browser window the server opens on startup is just clutter. Turn off <b>Open a window when NAVFLIX starts</b> in Settings. The server still prints its address, so you can always get back by hand.'],
     ['Install it as an app', 'In Chrome or Edge, the address bar shows an install icon while NAVFLIX is open. Installing gives it a Start menu entry and its own window with no address bar and no browser buttons. It still needs the server running, so keep starting it the usual way.'],
     ['The Back button', 'Steps back through where you have been: the collection you were on before, the Library, the Guide. If a dialog is open, Back closes that first. Once it runs out of places to go it settles on the <b>Library</b> and stays there, so Back never drops you out of NAVFLIX. To actually leave, close the tab.'],
+    ['A season at a time', 'Each season heading carries <b>✓ Watch season</b>, which ticks off every episode in it — for a show you have already seen and only want tracked from here on. When a season is complete the button turns into <b>↻ Unwatch season</b>, which puts it all back to not started and clears the resume points inside it. Both ask before doing anything, and neither touches the other seasons.'],
     ['Clicking a poster', 'Selects it: the billboard moves to that title. It does <b>not</b> start playing, ' +
       'and the page stays where it is so you can keep browsing.'],
     ['Play one directly', 'Hover a poster and use the <b>▶</b> button on it.'],
@@ -2033,7 +2084,7 @@ function card(m, opts) {
 // each can be opened out into a wrapped grid that runs down the page instead.
 let expanded = {};   // rail id -> true
 
-function rail(id, title, items, note, opts) {
+function rail(id, title, items, note, opts, extra) {
   if (!items.length) return '';
   const open = !!expanded[id];
 
@@ -2041,6 +2092,7 @@ function rail(id, title, items, note, opts) {
     '<div class="rail-head"><h2>' + esc(title) + '</h2>' +
     (note ? '<span class="n">' + note + '</span>' : '') +
     '<div class="spacer"></div>' +
+    (extra || '') +
     '<button class="mini railtoggle" data-rail="' + id + '" title="' +
       (open ? 'Back to a single row' : 'Lay them all out down the page') + '">' +
       (open ? '&#8676; Collapse' : '&#8862; Show all ' + items.length) + '</button>' +
@@ -2269,9 +2321,15 @@ function render() {
     seasons.forEach((s) => {
       const eps = A.queue.filter((m) => m.season === s);
       const watched = eps.filter((m) => m.done).length;
+      // Thirteen episodes you have already seen elsewhere is thirteen clicks.
+      const all = watched === eps.length;
+      const button = '<button class="mini" title="' +
+        (all ? 'Put this season back to unwatched' : 'Tick off every episode in this season') +
+        '" onclick="markSeason(' + s + ',' + (all ? 'false' : 'true') + ')">' +
+        (all ? '&#8635; Unwatch season' : '&#10003; Watch season') + '</button>';
       html += rail('sea' + s, 'Season ' + s, eps,
         watched ? watched + ' of ' + eps.length + ' watched'
-                : eps.length + (eps.length === 1 ? ' episode' : ' episodes'), ho);
+                : eps.length + (eps.length === 1 ? ' episode' : ' episodes'), ho, button);
     });
 
     const loose = A.queue.filter((m) => m.season == null);
@@ -2658,6 +2716,31 @@ async function seekTo(index, seconds) {
     lastSig = '';
     render();
     scrollTo({ top: y, behavior: 'instant' });
+  } catch (e) { toast(e.message); }
+}
+
+// Marking a season either way rewrites every episode in it, so it asks first.
+async function markSeason(season, done) {
+  const A = S.active;
+  if (!A) return;
+  const n = A.queue.filter((m) => m.season === season).length;
+  const ok = await uiConfirm({
+    title: done ? 'Mark all of season ' + season + ' as watched?'
+                : 'Put season ' + season + ' back to unwatched?',
+    message: done
+      ? n + ' episodes are ticked off. Nothing is deleted, and the same button puts them back.'
+      : n + ' episodes go back to not started, and any resume points inside them are cleared.',
+    confirmLabel: done ? 'Mark watched' : 'Mark unwatched',
+  });
+  if (!ok) return;
+  try {
+    const y = scrollY;
+    S = await post('/api/mark', { season: season, done: done });
+    lastSig = '';
+    render();
+    scrollTo({ top: y, behavior: 'instant' });
+    toast('Season ' + season + ': ' + (S.changed || n) + ' episodes marked ' +
+      (done ? 'watched' : 'unwatched') + '.');
   } catch (e) { toast(e.message); }
 }
 
