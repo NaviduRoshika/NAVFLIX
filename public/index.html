@@ -327,7 +327,13 @@
       linear-gradient(90deg, rgba(8,8,10,.96) 0%, rgba(8,8,10,.78) 38%, rgba(8,8,10,.2) 70%, rgba(8,8,10,.55) 100%),
       linear-gradient(0deg, var(--bg) 2%, rgba(10,10,12,.35) 34%, rgba(10,10,12,.1) 60%);
   }
-  .hero-inner { position: relative; padding: 0 44px 58px; max-width: 720px; }
+  /* The nav is fixed, so it does not push anything down. The billboard sits at
+     the bottom of the hero, which means a tall stack — a two-line title, the part
+     strip, three rows of buttons — grows upwards and slides under the nav. On a
+     short window the kicker ended up 69px behind it. This is the clearance the
+     Library already uses, and it only takes effect when the content is tall
+     enough to need it. */
+  .hero-inner { position: relative; padding: 104px 44px 58px; max-width: 720px; }
   .kicker {
     display: inline-flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 800;
     letter-spacing: 2.4px; text-transform: uppercase; color: #fff; margin-bottom: 14px;
