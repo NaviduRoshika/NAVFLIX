@@ -617,6 +617,38 @@
   .mrow .t span { color: var(--muted); font-size: 12px; word-break: break-all; }
   h3.sec { font-size: 12px; text-transform: uppercase; letter-spacing: 1.6px; color: var(--muted); margin: 0 0 12px; }
 
+  /* ---- subtitle timing ---- */
+  #dlgDrift, #dlgWhy { width: min(560px, 93vw); }
+  .dwhy { color: #cfd3dc; font-size: 13.5px; line-height: 1.65; margin: 0 0 14px; }
+  .dwhy b { color: #fff; }
+  .whytab { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 18px; }
+  .whytab td { padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  .whytab tr:first-child td { border-top: 0; }
+  .whytab td:first-child { color: var(--muted); width: 46%; }
+  .pickrow {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: #101016; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 8px; color: var(--text); font: inherit;
+  }
+  .pickrow:hover { border-color: rgba(255,255,255,.35); background: #16161d; }
+  .pickrow .t { flex: 1; min-width: 0; }
+  .pickrow .t b { display: block; font-size: 14px; font-weight: 700; }
+  .pickrow .t span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .pickrow .x { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .pickrow.on { border-color: var(--red); background: #1b1013; }
+  .pickrow .tick { flex: none; width: 18px; color: var(--red); font-size: 14px; font-weight: 800; }
+  .pickrow.on .t b { color: #fff; }
+  .picknote {
+    color: var(--muted); font-size: 12.5px; line-height: 1.55; margin: 14px 0 0;
+    padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  .icobtn {
+    width: 26px; height: 26px; min-width: 26px; padding: 0; border-radius: 99px;
+    background: rgba(30,30,38,.9); border: 1px solid rgba(255,255,255,.16);
+    color: var(--muted); font-size: 13px; font-weight: 800; line-height: 1;
+  }
+  .icobtn:hover { color: #fff; border-color: rgba(255,255,255,.45); }
+
   #dlgQr { width: min(440px, 92vw); }
   .qrwrap { text-align: center; }
   .qrwrap img {
@@ -769,6 +801,22 @@
     <div class="spacer"></div>
     <button class="mini" onclick="dlgSettings.close()">Close</button>
     <button class="mini go" id="btnSaveSettings">Save</button>
+  </div>
+</dialog>
+
+<dialog id="dlgWhy">
+  <div class="dh">Why are my subtitles out of sync?</div>
+  <div class="db" id="whyBody"></div>
+  <div class="df"><div class="spacer"></div>
+    <button class="mini" onclick="dlgWhy.close()">Close</button>
+  </div>
+</dialog>
+
+<dialog id="dlgDrift">
+  <div class="dh">Re-time this subtitle</div>
+  <div class="db" id="driftBody"></div>
+  <div class="df"><div class="spacer"></div>
+    <button class="mini" onclick="dlgDrift.close()">Close</button>
   </div>
 </dialog>
 
@@ -1804,8 +1852,11 @@ const GUIDE = [
     ['Out of sync, same gap throughout', 'Use the <b>SYNC</b> row: <code>−1s</code> <code>−0.1</code> ' +
       '<code>+0.1</code> <code>+1s</code>. It is stored per film and reapplied every time, unlike VLC\'s own ' +
       'adjustment, which it forgets when it closes.'],
-    ['Out of sync, drift that grows', 'That is a frame-rate mismatch. Use <b>Drifting? re-time…</b>, then ' +
-      'fine-tune with the buttons. Only works on downloaded subtitles, since it rewrites the file.'],
+    ['Out of sync, drift that grows', 'That is a frame-rate mismatch: the subtitle was timed against a copy of the film that runs at a different speed, so the error is a percentage and grows as the film runs. Press <b>⏱ Re-time…</b> or the <b>i</b> beside the SYNC row. Only works on downloaded subtitles, since it rewrites the file.'],
+    ['The Re-time button', 'It says what is currently set — <b>Re-time: off</b>, <b>Re-time: 25 → 23.976</b> — and opens a list of the states the file can be in, with a tick against the one it is in now. Each line says what you would be seeing if it were the right choice. Picking one <b>replaces</b> the setting rather than adding to it, so you can try them all and always get back.'],
+    ['The i button', 'Just the explanation, with none of the controls: what an offset is, what a drift is, and how to tell which you have. Separate from the picker, because most of the time you only want one of the two.'],
+    ['Which one to pick', 'Nearly every rip is <b>23.976fps</b>, so the first choice is almost always right. The two 24fps lines are for a true cinema transfer and are rare — picking one when you needed 23.976 looks correct for ten minutes and is eight seconds out by the end, because the ratios differ by a tenth of a percent.'],
+    ['Undo a re-timing', 'Re-timings multiply together, so two wrong guesses leave a number no fixed ratio can undo. <b>Undo — back to how it downloaded</b> appears in the panel once a subtitle has been re-timed and divides out everything applied, putting the file back byte for byte. Start again from there.'],
     ['Still wrong', '<b>⇄ Try another</b> steps to the next candidate. It is probably timed for another release.'],
     ['Your own file', 'Drop <code>FilmName.srt</code> beside the video and it is found automatically.'],
   ]],
@@ -1823,7 +1874,7 @@ const GUIDE = [
   ['keep', 'Where things are kept', [
     ['Your progress', '<code>data/state.json</code> holds every collection, position and watch log. ' +
       'Back it up and your marathons survive a reinstall.'],
-    ['Downloads', '<code>data/art/</code> for artwork, <code>data/subs/</code> for subtitles. Safe to delete; ' +
+    ['Downloads', '<code>data/art/</code> for artwork, <code>data/subs/</code> for subtitles — each downloaded subtitle keeps an untouched <code>.srt.orig</code> beside it, so re-timing always starts from the download rather than from the last rewrite. Safe to delete; ' +
       'both can be fetched again.'],
     ['Living on a portable drive', 'Collections on the same disk as the app are remembered relative to it, so the drive can be one letter on Windows and a mount point on Linux without repointing anything. Separators are stored the same way on both, and VLC is remembered per platform.'],
     ['Carrying Node and VLC too', 'NAVFLIX prefers a Node or VLC sitting in its own <code>runtime/</code> folder over anything installed, so the drive can run on a PC with neither. Windows can be fully self-contained. Linux cannot: VideoLAN publish no Linux build, so VLC there comes from the package manager (<code>sudo apt install vlc</code>).'],
@@ -2401,20 +2452,105 @@ function syncRow(m) {
       'onclick="nextSub(' + m.index + ')">⇄ Try another (' + ((s.pick || 0) + 1) + ' of ' + s.poolSize + ')</button>';
   }
 
+  // Two separate jobs: choosing a re-timing, and understanding why you would.
+  // They were briefly the same panel, which meant reading three paragraphs every
+  // time you only wanted to change the setting.
   if (s.downloaded) {
-    h += '<select class="subsel drift" onchange="stretchSub(' + m.index + ', this.value); this.selectedIndex=0">' +
-      '<option value="">Drifting? re-time…</option>' +
-      '<option value="1.0427">Gets further ahead (PAL 25 → 23.976)</option>' +
-      '<option value="0.9590">Falls further behind (23.976 → 25)</option>' +
-      '<option value="1.0417">Slightly ahead (24 → 25)</option>' +
-      '<option value="0.9600">Slightly behind (25 → 24)</option>' +
-      '</select>';
-    if (s.stretched && Math.abs(s.stretched - 1) > 0.0001) {
-      h += '<span class="subhint">re-timed ×' + s.stretched.toFixed(4) + '</span>';
-    }
+    h += '<button class="mini" title="Subtitles drifting further out as the film goes on?" ' +
+      'onclick="openDrift(' + m.index + ')">&#9201; Re-time: <b>' +
+      esc(driftName(s.stretched)) + '</b></button>';
   }
+  h += '<button class="mini icobtn" title="Why are my subtitles out of sync?" ' +
+    'onclick="whySubs()">i</button>';
 
   return h + '</div>';
+}
+
+/* ------------------------------------------------------- subtitle re-timing */
+// Each of these is a state the file can be in, not a nudge: picking a second one
+// replaces the first rather than multiplying with it.
+const DRIFT_CHOICES = [
+  [1, 'As it downloaded', 'off',
+    'No re-timing. Start here if you are not sure.'],
+  [1.0427, 'Runs ahead, further ahead as it goes', '25 \u2192 23.976',
+    'Written against a sped-up PAL copy. Stretches every time out by 4.3%. Almost always the right one \u2014 nearly every rip is 23.976fps.'],
+  [0.9590, 'Lags behind, further behind as it goes', '23.976 \u2192 25',
+    'The reverse: written against the slower copy. Pulls every time in by 4.1%.'],
+  [1.0417, 'Runs ahead, on a true 24fps transfer', '25 \u2192 24',
+    'Same direction as the second, a shade less. Rare \u2014 and a tenth of a percent wrong is eight seconds by the end of a long film.'],
+  [0.9600, 'Lags behind, on a true 24fps transfer', '24 \u2192 25',
+    'Same direction as the third, a shade less. Equally rare.'],
+];
+
+// What the button says it is set to.
+function driftName(stretched) {
+  const v = Number(stretched) || 1;
+  const hit = DRIFT_CHOICES.find((c) => Math.abs(c[0] - v) < 0.0005);
+  return hit ? hit[2] : '×' + v.toFixed(4);
+}
+
+let driftIndex = null;
+
+function openDrift(index) {
+  driftIndex = index;
+  renderDrift();
+  dlgDrift.showModal();
+}
+
+function renderDrift() {
+  const A = S.active;
+  const m = A && A.queue[driftIndex];
+  const s = m && m.subs;
+  if (!s) { dlgDrift.close(); return; }
+  const now = Number(s.stretched) || 1;
+  const known = DRIFT_CHOICES.some((c) => Math.abs(c[0] - now) < 0.0005);
+
+  let h = DRIFT_CHOICES.map((c) => {
+    const on = Math.abs(c[0] - now) < 0.0005;
+    return '<button class="pickrow' + (on ? ' on' : '') + '" data-target="' + c[0] + '">' +
+      '<span class="tick">' + (on ? '&#10003;' : '') + '</span>' +
+      '<span class="t"><b>' + esc(c[1]) + '</b><span>' + c[3] + '</span></span>' +
+      '<span class="x">' + (c[0] === 1 ? '' : '×' + c[0].toFixed(4)) + '</span></button>';
+  }).join('');
+
+  if (!known) {
+    h += '<p class="picknote">This file is currently at <b>×' + now.toFixed(4) +
+      '</b>, which is not one of these \u2014 left over from when picking two in a row ' +
+      'multiplied them together. Choosing any line above replaces it outright.</p>';
+  } else {
+    h += '<p class="picknote">Picking a line <b>replaces</b> the current setting rather than ' +
+      'adding to it, so you can try them without getting lost. Not sure what any of this means? ' +
+      'The <b>i</b> button beside SYNC explains it.</p>';
+  }
+
+  $('#driftBody').innerHTML = h;
+  document.querySelectorAll('#driftBody .pickrow').forEach((el) => {
+    el.onclick = async () => {
+      document.querySelectorAll('#driftBody .pickrow').forEach((b) => { b.disabled = true; });
+      await stretchSub(driftIndex, el.dataset.target);
+      dlgDrift.close();
+    };
+  });
+}
+
+// The explanation on its own, for when that is all you wanted.
+function whySubs() {
+  $('#whyBody').innerHTML =
+    '<p class="dwhy">A subtitle file is a list of stopwatch times \u2014 <i>at 1:52.6, show this line</i>. ' +
+    'It knows nothing about your copy of the film, so it is only right if both were timed the same way.</p>' +
+    '<table class="whytab">' +
+    '<tr><td>Out by the same amount all the way through</td>' +
+    '<td>Someone trimmed the opening differently. Nudge it with the <b>SYNC</b> buttons.</td></tr>' +
+    '<tr><td>Fine at the start, seconds out by the end</td>' +
+    '<td>The two copies run at different speeds. Fix it under <b>Re-time</b>.</td></tr>' +
+    '</table>' +
+    '<p class="dwhy">A film shot at 24 frames a second was transferred for European TV by simply ' +
+    'playing it 4% faster, at 25 \u2014 same footage, five minutes shorter. Subtitles written against ' +
+    'that copy are 4% too early for yours, and being a <b>percentage</b>, the gap grows as the film ' +
+    'runs. No amount of SYNC will fix that: you would correct the first half and break the second.</p>' +
+    '<p class="dwhy">So: check the sync near the start and again near the end. Same error in both ' +
+    'places is a job for SYNC. A gap that grows is a job for Re-time.</p>';
+  dlgWhy.showModal();
 }
 
 async function nudge(index, deltaMs, reset) {
@@ -2438,11 +2574,18 @@ async function nextSub(index) {
   } catch (e) { toast(e.message); }
 }
 
-async function stretchSub(index, ratio) {
-  if (!ratio) return;
+async function stretchSub(index, target) {
+  // 1 is a legitimate target — "as it downloaded" — so this cannot be a plain
+  // truthiness check. It used to guard the dropdown's empty first option.
+  const want = Number(target);
+  if (!(want > 0)) return;
   try {
     const y = scrollY;
-    S = await post('/api/subs/stretch', { index: index, ratio: Number(ratio) });
+    S = await post('/api/subs/stretch', { index: index, target: want });
+    // Re-timing rewrites the file VLC already read, so it can only take hold by
+    // starting the sitting again. Say so rather than letting the picture vanish
+    // and come back for no visible reason.
+    if (S.applied === 'restarting') toast('Re-timed. Restarting where you were so it takes effect.');
     lastSig = '';
     render();
     scrollTo({ top: y, behavior: 'instant' });

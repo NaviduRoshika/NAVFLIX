@@ -1007,6 +1007,11 @@ function saveSubtitleFile(c, item, text, meta) {
   fs.mkdirSync(SUB_DIR, { recursive: true });
   const file = subFilePath(c, item.rel);
   fs.writeFileSync(file, text, 'utf8');
+  // A pristine copy to re-time from, so every choice is computed against the
+  // download rather than against the last rewrite. Scaling a file that has
+  // already been scaled rounds each timestamp again — a millisecond a time, but
+  // it never comes back, and "as it downloaded" should mean exactly that.
+  try { fs.writeFileSync(file + '.orig', text, 'utf8'); } catch (e) { /* not fatal */ }
 
   const r = rec(c, item.rel);
   const prev = r.extSub || {};
@@ -1055,14 +1060,34 @@ async function fetchCandidate(c, item, poolIndex) {
 
 // Rewrite every timestamp in a stored .srt, for subtitles that drift because
 // they were timed against a different frame rate.
-function stretchSubtitle(c, item, ratio) {
+// `target` is the total stretch the file should end up with, not an amount to
+// pile on top. The panel offers a choice between states, so moving from one to
+// another must not compound: picking two in a row used to leave their product,
+// a number matching nothing on offer and undoable by nothing on offer either.
+// The multiplier actually applied is target ÷ whatever is on the file now.
+function stretchSubtitle(c, item, target) {
   const r = rec(c, item.rel);
   if (!r.extSub || !r.extSub.file || !fs.existsSync(r.extSub.file)) {
     throw new Error('There is no downloaded subtitle to re-time.');
   }
-  if (!(ratio > 0.5 && ratio < 2)) throw new Error('That stretch factor is out of range.');
+  const want = Number(target);
+  if (!(want > 0.5 && want < 2)) throw new Error('That stretch factor is out of range.');
 
-  const text = fs.readFileSync(r.extSub.file, 'utf8');
+  // Prefer the untouched download; fall back to the working file for subtitles
+  // fetched before that copy was kept, scaling relative to what is on them now.
+  const pristine = r.extSub.file + '.orig';
+  // Subtitles fetched before that copy was kept have none. If nothing has been
+  // applied to one yet then the working file *is* the original, so take the
+  // chance to keep it — anything already re-timed cannot be recovered this way
+  // and falls back to scaling relative to itself.
+  if (!fs.existsSync(pristine) && Math.abs((Number(r.extSub.stretched) || 1) - 1) < 0.0001) {
+    try { fs.copyFileSync(r.extSub.file, pristine); } catch (e) { /* not fatal */ }
+  }
+  const fromOriginal = fs.existsSync(pristine);
+  const ratio = fromOriginal ? want : want / (Number(r.extSub.stretched) || 1);
+  if (Math.abs(ratio - 1) < 0.000001 && !fromOriginal) return r.extSub;
+
+  const text = fs.readFileSync(fromOriginal ? pristine : r.extSub.file, 'utf8');
   const shifted = text.replace(/(\d{2}):(\d{2}):(\d{2})([,.])(\d{3})/g, (m, hh, mm, ss, sep, ms) => {
     const total = ((+hh) * 3600 + (+mm) * 60 + (+ss)) * 1000 + (+ms);
     let out = Math.max(0, Math.round(total * ratio));
@@ -1080,7 +1105,9 @@ function stretchSubtitle(c, item, ratio) {
     r.extSub.lastCue = Math.round(stats.lastCue);
     if (item.duration > 0) r.extSub.coverage = Math.round((stats.lastCue / item.duration) * 100);
   }
-  r.extSub.stretched = Number(((r.extSub.stretched || 1) * ratio).toFixed(4));
+  // The chosen state, exactly — not the product of the rounded steps that got
+  // here, or the bookkeeping would drift away from the menu.
+  r.extSub.stretched = want;
   saveNow();
   return r.extSub;
 }
@@ -1956,6 +1983,41 @@ function play(c, index, extraSeconds) {
 // An external .srt cannot be swapped in this way: it is handed to VLC as a
 // launch flag. That choice is saved and takes effect on the next sitting, and
 // the caller is told which of the two happened.
+// The SYNC buttons stored an offset and did nothing else, so pressing them
+// while the film was on screen appeared to do nothing at all — the number was
+// only handed to VLC as --sub-delay on the next launch. VLC takes it live as
+// well, in seconds: verified against a real VLC, which reads the value back
+// exactly, fractions and negatives included.
+function applyDelayLive(c, rel, ms) {
+  if (!session || session.collectionId !== c.id || session.rel !== rel) return 'next sitting';
+  vlcCommand('subdelay', { val: String(ms / 1000) });
+  return 'now';
+}
+
+// Re-timing rewrites the subtitle file, and VLC read that file when it started.
+// Nothing short of loading it again will do, so the sitting is restarted where
+// it stands — which is the one thing NAVFLIX is already good at.
+function restartHere(c, rel) {
+  if (!session || session.collectionId !== c.id || session.rel !== rel) return 'next sitting';
+  const index = session.index;
+  const at = Math.max(0, Math.floor(session.time));
+  rec(c, rel).position = at;
+  saveNow();
+  stopSession();
+  // VLC takes a moment to go. Starting the replacement before it has would throw
+  // "already playing", so wait for the session to clear rather than guess a delay.
+  let tries = 0;
+  const again = () => {
+    if (session) {
+      if (++tries > 12) return;                 // six seconds; something is stuck
+      return setTimeout(again, 500);
+    }
+    try { play(c, index); } catch (e) { /* the Play button is still there */ }
+  };
+  setTimeout(again, 900);
+  return 'restarting';
+}
+
 function applySubLive(c, rel, choice) {
   if (!session || session.collectionId !== c.id || session.rel !== rel) return 'not playing';
   if (choice === 'off') { vlcCommand('subtitle_track', { val: '0' }); return 'now'; }
@@ -2696,7 +2758,8 @@ const server = http.createServer(async (req, res) => {
       next = Math.max(-60000, Math.min(60000, Math.round(next / 100) * 100));
       if (next === 0) delete r.subDelay; else r.subDelay = next;
       saveNow();
-      return json(res, 200, snapshot(local));
+      const when = applyDelayLive(c, item.rel, next);
+      return json(res, 200, Object.assign(snapshot(local), { applied: when }));
     }
 
     if (p === '/api/subs/next' && req.method === 'POST') {
@@ -2721,11 +2784,13 @@ const server = http.createServer(async (req, res) => {
       const item = buildQueue(c)[Number(b.index)];
       if (!item) return json(res, 400, { error: 'Unknown episode.' });
       try {
-        stretchSubtitle(c, item, Number(b.ratio));
+        // 1 is "as it downloaded", which is just another state to select.
+        stretchSubtitle(c, item, b.reset ? 1 : Number(b.target));
       } catch (e) {
         return json(res, 400, { error: e.message || String(e) });
       }
-      return json(res, 200, snapshot(local));
+      const when = restartHere(c, item.rel);
+      return json(res, 200, Object.assign(snapshot(local), { applied: when }));
     }
 
     if (p === '/api/subs' && req.method === 'POST') {

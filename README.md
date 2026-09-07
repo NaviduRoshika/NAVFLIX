@@ -364,6 +364,19 @@ track, sitting beside tagged Indonesian and Malay ones, played with no subtitle
 at all. Checked across 981 files: four films gained a subtitle and no film's
 existing choice changed.
 
+When the gap *grows* as the film runs, that is a frame-rate mismatch rather than
+an offset. The **Re-time** button says what is set — *off*, *25 → 23.976* — and
+opens the list of states the file can be in, ticked against the current one.
+Nearly every rip is 23.976fps, so the first is almost always right; the two 24fps
+choices differ by a tenth of a percent, which looks fine for ten minutes and is
+eight seconds out by the end of a two-hour film.
+
+Picking a line **replaces** the setting rather than compounding with it. Each one
+is computed from an untouched copy of the download kept beside it, so choosing
+*as it downloaded* restores the file byte for byte no matter how many you tried
+first. The **i** button beside it is the explanation on its own, for when that is
+all you wanted.
+
 A **Subtitles** dropdown sits under the billboard buttons: `Auto`, `Off`, or any
 track by name. The choice is remembered per film in `data/state.json`.
 
