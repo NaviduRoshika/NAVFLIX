@@ -46,6 +46,15 @@ slot filled from your most recent folders. The same title never appears twice.
 Clicking a card opens that folder with the title on the billboard; like clicking
 a poster, it does not start playing.
 
+Detection covers `S01E01`, `s02ep1`, `3x01`, `S1 - 01`, a `Season 2` folder with
+`05 - Grilled` inside, and a bare run of `01. Title`, `02. Title` with no season
+named anywhere — the way most anime is laid out. A film shelf is numbered
+identically (`01 Iron Man (2008)`), so a four-digit year in the name rules the
+last case out. Measured over 3,147 files here, widening it moved six folders from
+films to series and none the other way; the closest film shelf to the threshold
+sits at 3% of its files looking like episodes, against 76% for the least
+episode-like show.
+
 The Library files each collection as a **film shelf** or a **TV series** based on
 what is in its folder, and offers *Everything / Films / TV series* buttons above
 the grid, plus **Watched / Not watched** beside them. The two groups ask
@@ -205,8 +214,44 @@ session that Back can never step off. Close the tab to actually leave.
 ## Details
 
 The **Details** button in the top bar opens a breakdown of the collection you
-have open: what each file actually is, and who made it. Press **Scan** once and
-it is remembered; nothing is read until you do.
+have open: what each file actually is, and who made it. Press **Scan** and it is
+remembered — or leave it to fill itself in, which it now does on its own.
+
+## Filling itself in
+
+Scanning and fetching artwork were both things you pressed a button for, one
+folder at a time. With eighty folders that is eighty presses, which is why most
+of a library never got either done. Both now also happen quietly in the
+background, a little at a time, in **Settings**:
+
+| Switch | What it does | Default |
+| --- | --- | --- |
+| **Read file details in the background** | Resolution, codecs, tracks and real running time for files not looked at yet. Your own disk only. | On |
+| **Fetch artwork in the background** | The posters and episode stills still missing. **Uses the network.** | On |
+
+The second is listed separately, and says so plainly, because it is the one that
+goes online. Turn it off and NAVFLIX is back to reaching the network only when
+you press **Get artwork**.
+
+Neither is ever allowed to compete with you:
+
+- **Playback stops it dead.** These are the same platters the film is streaming
+  off, and a header read in the middle of one is a stutter. A slice checks before
+  every single file, so pressing play interrupts it part-way through.
+- **A job you started wins.** Pressing Scan, Get artwork or Find subtitles takes
+  the disk and the network; the background waits.
+- **Slices are small** — twenty-five file reads or six catalogue requests at a
+  time, fifteen seconds apart, at the same pace the buttons use.
+- **It goes quiet when there is nothing left**, rather than rebuilding every
+  folder's queue every fifteen seconds forever. Adding a folder, pointing one at
+  a new drive, or changing either switch wakes it again.
+
+Expect roughly **1,400 images an hour** with artwork left on. A large library
+that has never been fetched is therefore a couple of hours of trickle, not a
+single long stall — and you can watch something while it happens.
+
+A file whose header cannot be read is recorded as attempted, so unattended
+scanning does not return to the same broken file forever.
 
 ### Read from the file, not from its name
 
@@ -237,7 +282,7 @@ external drive, and is entirely local.
 The same scan looks each title up on the free Cinemeta catalogue and keeps the
 director, writer, cast, genres, IMDb rating, awards and plot. A show is one
 lookup for the whole folder. A film shelf is one per film, which is about a
-minute for a hundred films. This half is the only part that goes online.
+minute for a hundred films. This half is the part that goes online.
 
 Cinemeta returns the top three billed actors per title, not a full cast list.
 
@@ -300,16 +345,33 @@ Local backdrops are read from `<film>-fanart.jpg` / `-backdrop.jpg`, or from
 ### Get artwork
 
 The billboard has a **Get artwork (n)** button whenever films are missing images.
-Pressing it is the *only* time NAVFLIX touches the network. It sends each film's
-title and year to a public film catalogue, downloads the poster and backdrop once,
-and caches both in `data/art/` — after that you are fully offline again. The button
-shows live progress and can be stopped mid-run.
+It sends each film's title and year to a public film catalogue, downloads the
+poster and backdrop once, and caches both in `data/art/` — after that you are
+fully offline again. The button shows live progress and can be stopped mid-run.
+
+The same work also happens on its own, a little at a time — see
+[Filling itself in](#filling-itself-in). Those two, and nothing else, are when
+NAVFLIX goes near the network; turning the background switch off puts it back to
+only ever going online when you press the button.
 
 Budget roughly **25 KB per poster and 500–650 KB per backdrop**, so a 23-film
 marathon costs about 15 MB on disk.
 
 A film the catalogue can't identify is marked as attempted, so the button doesn't
 nag you about it forever. Use **Get artwork** again after adding new films.
+
+What counts as *missing* depends on the collection, and matches what the fetch
+actually downloads:
+
+- A **film** is missing artwork until it has a poster and a backdrop of its own.
+- An **episode** shares the show's poster by design, so the only thing it needs
+  of its own is its still.
+
+That distinction matters because the show's images stand in for anything an
+episode lacks. Add season 5 to a show whose artwork you fetched at season 2 and
+every new episode already resolves to a picture — the show poster and the show
+backdrop. Counting those as done made the new season look complete and the
+**Get artwork** button never appeared. The count now ignores the stand-ins.
 
 By default it uses **Cinemeta** (`v3-cinemeta.strem.io`), Stremio's public
 IMDb-backed catalogue: no key, no signup, no rate-limit registration.
@@ -527,10 +589,35 @@ every collection its progress per file and its watch log. It also remembers the
 subtitle tracks found inside each video, so that is worked out once rather than
 on every launch, and — once you have run a Details scan — what was read out of
 each file and the cast and crew for each title. Together those add roughly two
-megabytes for a library of a thousand files. Back it up and your marathons
-survive a reinstall.
+megabytes for a library of a thousand files.
 Settings → **Erase this collection's progress** resets one without touching the
 others.
+
+### It is looked after for you
+
+This one file is the only thing here that cannot be rebuilt. The videos are on
+the drive, the artwork can be fetched again — but every position, every mark and
+every subtitle offset you tuned by hand lives here, and it is rewritten
+constantly, on a drive that gets unplugged. Two things guard it.
+
+**Every save is atomic.** The new state is written to `state.json.tmp`, flushed
+to the disk itself rather than left in its write cache, and only then renamed
+over the real file. Rename is atomic on NTFS and ext4 alike, so the old file
+stays whole and readable right up to the instant the new one is complete. Pull
+the drive mid-save and you lose that save, not the file.
+
+**A copy is kept once a day.** The first save of each day copies the *existing*
+`state.json` to `data/backups/state-YYYY-MM-DD.json` before overwriting it — the
+copy is of a file that has already proved it parses, never of the state about to
+be written. Ten days are kept and older ones are removed. That covers the
+accident a rename cannot: a save that succeeds but stores something wrong.
+
+To go back, close NAVFLIX and rename one of them over `data/state.json`. They
+are left as plain uncompressed JSON precisely so that recovery is nothing more
+than renaming a file. Ten days of a large library costs around twenty megabytes.
+
+A backup is never allowed to fail a save — if the folder is read-only or the
+disk is full, the save still goes through and no backup is taken that day.
 
 A state file written by the single-folder version is upgraded automatically on
 first start: the old library becomes your first collection, keeping its episode
@@ -554,6 +641,7 @@ length, positions, and history. Nothing is lost and no action is needed.
 | `probe.js` | Reads resolution, codecs and tracks out of MKV and MP4 headers; no dependencies |
 | `package.json` | Lets you run `npm start`; no dependencies |
 | `data/state.json` | Your progress (created on first run) |
+| `data/backups/` | Daily copies of it, ten days deep |
 
 ## Running it from a portable drive
 

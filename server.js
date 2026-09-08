@@ -287,7 +287,8 @@ function load() {
   }
 
   const fresh = { version: 2, activeId: '', vlcPath: '', vlcPaths: {}, fullscreen: true,
-    tmdbKey: '', openOnStart: true, remote: blankRemote(), collections: [] };
+    tmdbKey: '', openOnStart: true, backgroundScan: true, backgroundFetch: true,
+    remote: blankRemote(), collections: [] };
   if (!raw) return fresh;
 
   // Already v2.
@@ -306,6 +307,10 @@ function load() {
       tmdbKey: raw.tmdbKey || '',
       // Absent in older state files, and the old behaviour was to open.
       openOnStart: raw.openOnStart !== false,
+      // Both on unless you turned them off. The second one reaches the network,
+      // which is why it is a switch of its own rather than folded into the first.
+      backgroundScan: raw.backgroundScan !== false,
+      backgroundFetch: raw.backgroundFetch !== false,
       remote: Object.assign(blankRemote(), raw.remote || {}),
       collections: raw.collections.map((c) => portCollection({
         id: c.id || newId(),
@@ -370,10 +375,74 @@ function onDisk(st) {
   });
 }
 
+// state.json is the only thing here that cannot be rebuilt. The videos are on
+// the drive, the artwork can be fetched again, but every position, every mark,
+// and every subtitle offset tuned by hand lives in this one file — which is
+// rewritten constantly, on an external drive, that gets unplugged.
+//
+// Two different accidents, so two different defences.
+//
+// A torn write is the sharper one. writeFileSync empties the file and then
+// fills it, so losing power in that gap leaves no good copy of anything at
+// all. Saving now goes to a temp file which is renamed into place, and rename
+// is atomic on NTFS and ext4 alike: the old file stays whole and readable
+// until the moment the new one is complete.
+//
+// The other is a save that succeeds but stores something wrong — a bug, or a
+// folder removed by mistake. Renaming cannot help there, so a copy of the last
+// file known to parse is kept once a day, ten days deep.
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BACKUP_KEEP = 10;
+const BACKUP_NAME = /^state-\d{4}-\d{2}-\d{2}\.json$/;
+
+// Copies the file that is about to be replaced, not the state about to be
+// written: the point is to keep something that has already proved itself
+// readable. A backup failing must never stop a save, so everything here is
+// best-effort and silent.
+function backupIfDue() {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return;              // nothing to keep yet
+
+    const dest = path.join(BACKUP_DIR, 'state-' + dayKey() + '.json');
+    if (fs.existsSync(dest)) return;                     // today is already kept
+
+    // Never file a corrupt state as a good copy. This parse runs once a day,
+    // so the cost of reading it does not matter.
+    const text = fs.readFileSync(STATE_FILE, 'utf8');
+    const parsed = JSON.parse(text);
+    if (!parsed || !Array.isArray(parsed.collections)) return;
+
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    fs.writeFileSync(dest, text);
+
+    // The names sort the same way the dates do, so the oldest are simply the
+    // ones off the front.
+    const kept = fs.readdirSync(BACKUP_DIR).filter((f) => BACKUP_NAME.test(f)).sort();
+    for (const old of kept.slice(0, Math.max(0, kept.length - BACKUP_KEEP))) {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch (e) { /* leave it */ }
+    }
+  } catch (e) { /* a missing backup is not worth failing a save over */ }
+}
+
 function saveNow() {
   clearTimeout(saveTimer);
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(STATE_FILE, JSON.stringify(onDisk(state), null, 2));
+  backupIfDue();
+
+  const text = JSON.stringify(onDisk(state), null, 2);
+  const tmp = STATE_FILE + '.tmp';
+
+  // fsync before the rename, or the rename can land while the new file is
+  // still only in the drive’s write cache — which on a yanked USB disk means
+  // swapping a good file for an empty one.
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, text);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, STATE_FILE);
 }
 
 // Commit the converted state immediately. Waiting for the next incidental save
@@ -513,6 +582,10 @@ function parseEpisode(rel) {
     /\bS(\d{1,2})[\s\-]*E(?:P|PISODE)?[\s\-]*(\d{1,3})\b/i,   // S03E04, s02ep1, S03 - E04
     /\b(\d{1,2})\s*x\s*(\d{1,3})\b/i,                          // 3x04, [3x01]
     /\bSeason\s*(\d{1,2})[\s\-]*Episode\s*(\d{1,3})\b/i,
+    // "Attack on Titan S1 - 01": the season is marked but the episode is just a
+    // number after a dash. The dash is required — without it "S2 2CH x265"
+    // would read as season 2, episode 2.
+    /\bS(\d{1,2})\s*[-\u2013\u2014]\s*(\d{1,3})\b/i,
   ];
   for (const re of combined) {
     const m = base.match(re);
@@ -525,6 +598,21 @@ function parseEpisode(rel) {
   if (sm) {
     const em = base.match(/\bE(?:P|PISODE)?[\s\-]*(\d{1,3})\b/i) || base.match(/^\s*(\d{1,3})\b/);
     if (em) return made(Number(sm[1]), Number(em[1]), em.index);
+  }
+
+  // A flat folder of "01. Fullmetal Alchemist", "02. The First Day" — a single
+  // run of episodes with no season named anywhere, which is how anime and box
+  // sets often arrive. Call it season 1.
+  //
+  // A film shelf is numbered exactly the same way ("01 Iron Man (2008)"), so a
+  // year anywhere in the name rules this out. That one test is what keeps MCU,
+  // Marvel and DC from turning into season 1 of something.
+  // The separator may be punctuation ("066 - Bushy Brow") or nothing at all,
+  // because the dots in "01. Fullmetal Alchemist" have already been flattened
+  // to spaces by the time this runs.
+  const lead = base.match(/^\s*(\d{1,3})(?:\s*[.\-)\]]\s*|\s+)\S/);
+  if (lead && !/\b(19|20)\d{2}\b/.test(base)) {
+    return made(1, Number(lead[1]), 0);
   }
   return null;
 }
@@ -1260,6 +1348,26 @@ function findArt(c, rel) {
   return artCacheSet(key, found);
 }
 
+// findArt and findBackdrop both fall back to the show's own images, so for an
+// episode they practically never come back empty. That makes them the wrong
+// question to ask when deciding whether there is still artwork to fetch: a
+// season added after the last fetch looked complete, because the show poster
+// and show backdrop were standing in for all of it, and the Get artwork button
+// never appeared.
+//
+// What counts as complete depends on the shape, and mirrors what the fetch job
+// actually downloads. A film needs a poster and a backdrop of its own. An
+// episode shares the show poster by design, so the only thing it needs of its
+// own is its still — and the show backdrop filling that slot is exactly the
+// case we must not count as done.
+function artComplete(c, rel) {
+  if (seriesShape(c)) {
+    const bg = findBackdrop(c, rel);
+    return !!bg && bg !== showArtPath(c, 'bg');
+  }
+  return !!findArt(c, rel) && !!findBackdrop(c, rel);
+}
+
 function serveArt(res, c, rel, kind) {
   if (!c) { res.writeHead(404); return res.end(); }
   // Keep the request inside the collection folder.
@@ -1387,6 +1495,51 @@ async function downloadTo(url, dest) {
   fs.writeFileSync(dest, buf);
 }
 
+// The unit of work, pulled out of the jobs below so that pressing the button
+// and letting the background get on with it cannot drift apart. Each returns
+// what happened rather than counting anything itself:
+//
+//   found  something was downloaded
+//   kept   there was already a copy on disk
+//   none   the catalogue has nothing for this one
+//
+// and each throws if the network fails, which the callers treat as an error.
+async function episodeArtFor(c, item, force) {
+  const ep = parseEpisode(item.rel);
+  const meta = ep && c.seriesMeta && c.seriesMeta.episodes[ep.season + ':' + ep.episode];
+  if (!meta || !meta.thumbnail) return 'none';
+
+  const dest = cachedArtPath(c, item.rel, 'bg');
+  rec(c, item.rel).artTried = true;
+  if (!force && fs.existsSync(dest)) return 'kept';
+
+  await downloadTo(meta.thumbnail, dest);
+  artCache.delete('bg|' + c.id + '|' + item.rel);
+  return 'found';
+}
+
+async function filmArtFor(c, item, force) {
+  const needPoster = force || !findArt(c, item.rel);
+  const needBg = force || !findBackdrop(c, item.rel);
+  if (!needPoster && !needBg) return 'kept';
+
+  const hit = await lookupArtwork(item.title);
+  if (!hit) {
+    rec(c, item.rel).artTried = true;                        // don't keep retrying
+    return 'none';
+  }
+  if (needPoster && hit.poster) {
+    await downloadTo(hit.poster, cachedArtPath(c, item.rel));
+    artCache.delete(c.id + '|' + item.rel);
+  }
+  if (needBg && hit.background) {
+    await downloadTo(hit.background, cachedArtPath(c, item.rel, 'bg'));
+    artCache.delete('bg|' + c.id + '|' + item.rel);
+  }
+  rec(c, item.rel).artTried = true;
+  return 'found';
+}
+
 // A series is one lookup for the whole show plus a still per episode — quite
 // unlike a film folder, where every entry is a separate title to identify.
 async function runSeriesArtJob(c, force) {
@@ -1423,20 +1576,14 @@ async function runSeriesArtJob(c, force) {
   for (const item of queue) {
     if (!artJob || !artJob.running) break;
     artJob.done++;
-    const ep = parseEpisode(item.rel);
-    const meta = ep && c.seriesMeta.episodes[ep.season + ':' + ep.episode];
-    if (!meta || !meta.thumbnail) { artJob.failed++; continue; }
 
-    const dest = cachedArtPath(c, item.rel, 'bg');
-    rec(c, item.rel).artTried = true;
-    if (!force && fs.existsSync(dest)) { artJob.found++; continue; }
-    try {
-      await downloadTo(meta.thumbnail, dest);
-      artCache.delete('bg|' + c.id + '|' + item.rel);
-      artJob.found++;
-    } catch (e) {
-      artJob.failed++;
-    }
+    let outcome;
+    try { outcome = await episodeArtFor(c, item, force); }
+    catch (e) { outcome = 'error'; }
+
+    if (outcome === 'none') { artJob.failed++; continue; }     // no still exists
+    if (outcome === 'kept') { artJob.found++; continue; }      // already on disk
+    if (outcome === 'error') artJob.failed++; else artJob.found++;
     await new Promise((r) => setTimeout(r, 200));
   }
 
@@ -1458,30 +1605,12 @@ async function runArtJob(c, force) {
     if (!artJob || !artJob.running) break;
     artJob.done++;
 
-    const needPoster = force || !findArt(c, item.rel);
-    const needBg = force || !findBackdrop(c, item.rel);
-    if (!needPoster && !needBg) continue;                   // already covered
+    let outcome;
+    try { outcome = await filmArtFor(c, item, force); }
+    catch (e) { outcome = 'error'; }
 
-    try {
-      const hit = await lookupArtwork(item.title);
-      if (!hit) {
-        artJob.failed++;
-        rec(c, item.rel).artTried = true;                   // don't keep retrying
-        continue;
-      }
-      if (needPoster && hit.poster) {
-        await downloadTo(hit.poster, cachedArtPath(c, item.rel));
-        artCache.delete(c.id + '|' + item.rel);
-      }
-      if (needBg && hit.background) {
-        await downloadTo(hit.background, cachedArtPath(c, item.rel, 'bg'));
-        artCache.delete('bg|' + c.id + '|' + item.rel);
-      }
-      rec(c, item.rel).artTried = true;
-      artJob.found++;
-    } catch (e) {
-      artJob.failed++;
-    }
+    if (outcome === 'kept') continue;                        // already covered
+    if (outcome === 'found') artJob.found++; else artJob.failed++;
     save();
     // Be a polite guest on a free public API.
     await new Promise((r) => setTimeout(r, 320));
@@ -1493,6 +1622,141 @@ async function runArtJob(c, force) {
     artJob.finishedAt = Date.now();
   }
 }
+
+// ------------------------------------------------------------ background work
+//
+// Details and Get artwork are both deliberate, per-collection, and started by
+// pressing a button. With eighty folders that is eighty presses, which is why
+// most of a library never gets either done. This performs the same work a
+// little at a time, in the gaps when nothing else is going on.
+//
+// Two switches rather than one, because the halves are not alike:
+//
+//   Reading a file header touches nothing but your own disk. On by default.
+//   Cast, crew and artwork come from a public catalogue, and the promise made
+//   everywhere else in this program is that it only goes out to the network
+//   when you ask it to. Off until you say otherwise.
+//
+// Nothing here is allowed to compete with you. A slice is small, it stops the
+// moment you press play, and the whole sweep goes quiet once there is nothing
+// left to find.
+
+const SWEEP_EVERY = 15000;      // between slices
+const SWEEP_READS = 25;         // file headers per slice; roughly two seconds of disk
+const SWEEP_CALLS = 6;          // catalogue requests per slice
+const SWEEP_QUIET = 600000;     // how long to rest after a pass finds no work
+
+let sweeping = false;
+let sweepQuietUntil = 0;
+let sweepNote = null;           // { kind, collection, left } — what it is up to
+
+// Anything you started yourself owns the disk, the network, and the drive's
+// attention. Playback most of all: these are the same platters the film is
+// streaming off, and a header read in the middle of it is a stutter.
+function sweepIdle() {
+  if (session) return false;
+  if (artJob && artJob.running) return false;
+  if (detailJob && detailJob.running) return false;
+  if (subJob && subJob.running) return false;
+  return true;
+}
+
+function sweepReachable() {
+  return state.collections.filter((c) => {
+    try { return c.path && fs.existsSync(c.path); } catch (e) { return false; }
+  });
+}
+
+// Reading headers. probeFile is synchronous and costs about 75ms on an external
+// drive, so this hands control back between files exactly as the foreground
+// scan does — otherwise a slice of twenty-five would freeze the page for two
+// seconds at a time.
+async function sweepScan() {
+  for (const c of sweepReachable()) {
+    const todo = orderedFiles(c).filter((f) => !storedMedia(c, f.rel, f.size));
+    if (!todo.length) continue;
+
+    sweepNote = { kind: 'scan', collection: c.name, left: todo.length };
+    let n = 0;
+    for (const f of todo) {
+      if (!sweepIdle()) break;
+      try {
+        if (!probeInto(c, f.rel)) markUnreadable(c, f.rel, f.size);
+      } catch (e) { markUnreadable(c, f.rel, f.size); }
+      await new Promise((resolve) => setImmediate(resolve));
+      if (++n >= SWEEP_READS) break;
+    }
+    saveNow();
+    return true;                                   // one collection per slice
+  }
+  return false;
+}
+
+// Artwork, at the same pace the button uses. A show has to be identified before
+// any of its stills can be looked up, so that comes first and costs a slice of
+// its own.
+async function sweepFetch() {
+  for (const c of sweepReachable()) {
+    const series = seriesShape(c);
+    const todo = buildQueue(c).filter((m) => m.needsArt && !m.artTried);
+    if (!todo.length) continue;
+
+    sweepNote = { kind: 'art', collection: c.name, left: todo.length };
+
+    if (series && !c.seriesMeta) {
+      try { await fetchSeriesMeta(c, series); } catch (e) { /* another time */ }
+      saveNow();
+      return true;
+    }
+
+    let n = 0;
+    for (const item of todo) {
+      if (!sweepIdle()) break;
+      try {
+        const outcome = series
+          ? await episodeArtFor(c, item, false)
+          : await filmArtFor(c, item, false);
+        // Work nobody is watching must not come back to the same file every
+        // fifteen seconds. An episode the catalogue has no still for is marked
+        // as attempted here, which pressing the button deliberately does not do.
+        if (outcome === 'none') rec(c, item.rel).artTried = true;
+      } catch (e) { /* the network can fail; try again next slice */ }
+      await new Promise((resolve) => setTimeout(resolve, series ? 200 : 320));
+      if (++n >= SWEEP_CALLS) break;
+    }
+    saveNow();
+    return true;
+  }
+  return false;
+}
+
+// A pass that finds nothing puts the sweep to sleep for ten minutes, which is
+// right up until something changes underneath it. Adding a folder, pointing one
+// at a new drive, or turning a switch back on all mean there may be work now.
+function wakeSweep() {
+  sweepQuietUntil = 0;
+}
+
+async function sweepTick() {
+  if (sweeping || Date.now() < sweepQuietUntil || !sweepIdle()) return;
+  sweeping = true;
+  try {
+    if (state.backgroundScan !== false && await sweepScan()) return;
+    if (state.backgroundFetch !== false && await sweepFetch()) return;
+    // Nothing outstanding anywhere. Rebuilding every queue for eighty folders
+    // every fifteen seconds to rediscover that would be the most expensive
+    // thing this program does, so go quiet for a while instead.
+    sweepNote = null;
+    sweepQuietUntil = Date.now() + SWEEP_QUIET;
+  } catch (e) {
+    sweepNote = null;
+    sweepQuietUntil = Date.now() + SWEEP_QUIET;
+  } finally {
+    sweeping = false;
+  }
+}
+
+setInterval(sweepTick, SWEEP_EVERY);
 
 // ---------------------------------------------------------------- search
 //
@@ -1576,6 +1840,14 @@ function storedMedia(c, rel, size) {
   return m;
 }
 
+// A file the probe cannot read would otherwise be tried again on every scan.
+// That barely mattered while scanning only happened when you pressed a button;
+// it matters a great deal now that it also happens on its own. Record the
+// attempt the same way a success is recorded, so it counts as dealt with.
+function markUnreadable(c, rel, size) {
+  rec(c, rel).media = { at: new Date().toISOString(), size: size || 0, unreadable: true };
+}
+
 function probeInto(c, rel) {
   const file = path.join(c.path, rel.split('/').join(path.sep));
   const p = probe.probeFile(file);
@@ -1643,7 +1915,10 @@ async function runDetailJob(c, force) {
     if (!detailJob || !detailJob.running) break;
     detailJob.done++;
     if (!force && storedMedia(c, item.rel, item.size)) continue;
-    try { if (probeInto(c, item.rel)) detailJob.read++; } catch (e) { /* unreadable file */ }
+    try {
+      if (probeInto(c, item.rel)) detailJob.read++;
+      else markUnreadable(c, item.rel, item.size);
+    } catch (e) { markUnreadable(c, item.rel, item.size); }
     await new Promise((resolve) => setImmediate(resolve));
   }
   saveNow();
@@ -1742,7 +2017,7 @@ function detailsFor(c) {
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   };
 
-  const scanned = items.filter((it) => it.media).length;
+  const scanned = items.filter((it) => it.media && !it.media.unreadable).length;
   const identified = series ? (show ? items.length : 0) : items.filter((it) => it.info).length;
   const bytes = items.reduce((n, it) => n + (it.size || 0), 0);
   const seconds = items.reduce((n, it) => n + ((it.media && it.media.duration) || 0), 0);
@@ -1869,6 +2144,7 @@ function buildQueue(c, withSubs) {
       art: artUrl(c, f.rel, ''),
       backdrop: artUrl(c, f.rel, 'bg'),
       artTried: !!r.artTried,
+      needsArt: !artComplete(c, f.rel),
       subs: withSubs ? subsFor(c, f.rel) : null,
     };
   });
@@ -2284,7 +2560,7 @@ function collectionCard(c) {
     total: queue.length,
     done: queue.filter((m) => m.done).length,
     currentTitle: cur >= 0 ? queue[cur].title : null,
-    noArt: queue.filter((m) => (!m.art || !m.backdrop) && !m.artTried).length,
+    noArt: queue.filter((m) => m.needsArt && !m.artTried).length,
     series: shapeOf(c, queue, missing).series,
     // A cover for the library grid: whatever the collection is up to next.
     art: (function () {
@@ -2341,6 +2617,11 @@ function snapshot(local) {
     fullscreen: state.fullscreen,
     tmdbKey: state.tmdbKey || '',
     openOnStart: state.openOnStart !== false,
+    background: {
+      scan: state.backgroundScan !== false,
+      fetch: state.backgroundFetch !== false,
+      note: sweepNote,
+    },
     remote: {
       enabled: !!state.remote.enabled,
       // The code and the addresses are only ever sent to this machine. A paired
@@ -2592,6 +2873,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: 'That folder does not exist.' });
       }
       saveNow();
+      wakeSweep();     // there is new work; do not sit out the rest of the rest
       return json(res, 200, Object.assign(snapshot(local), { added: added, skipped: skipped }));
     }
 
@@ -2625,6 +2907,7 @@ const server = http.createServer(async (req, res) => {
       scanCache.clear();
       artCache.clear();
       saveNow();
+      wakeSweep();     // a folder that was unreachable may now have work in it
       return json(res, 200, snapshot(local));
     }
 
@@ -2652,6 +2935,8 @@ const server = http.createServer(async (req, res) => {
       if (b.vlcPath != null) rememberVlc(String(b.vlcPath).trim());
       if (b.tmdbKey != null) state.tmdbKey = String(b.tmdbKey).trim();
       if (b.openOnStart != null) state.openOnStart = !!b.openOnStart;
+      if (b.backgroundScan != null) { state.backgroundScan = !!b.backgroundScan; wakeSweep(); }
+      if (b.backgroundFetch != null) { state.backgroundFetch = !!b.backgroundFetch; wakeSweep(); }
       if (b.remoteEnabled != null) {
         state.remote.enabled = !!b.remoteEnabled;
         // First time on, mint a code. Turning it off drops every paired phone,

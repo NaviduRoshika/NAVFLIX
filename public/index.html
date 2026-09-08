@@ -109,6 +109,18 @@
     width: 1px; align-self: stretch; margin: 2px 4px;
     background: rgba(255,255,255,.14);
   }
+  /* Deliberately quiet. It is a thing happening on its own, not a thing to
+     attend to, so it reads as a caption rather than as a status bar. */
+  .bgline {
+    display: flex; align-items: center; gap: 8px;
+    margin: -4px 0 18px; font-size: 13px; color: var(--muted);
+  }
+  .bgline .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--red); opacity: .8;
+    animation: bgpulse 1.8s ease-in-out infinite;
+  }
+  @keyframes bgpulse { 0%, 100% { opacity: .25 } 50% { opacity: .9 } }
   .libsearch { position: relative; margin-left: auto; }
   .libsearch input[type=text] {
     width: 250px; padding: 7px 32px 7px 14px; border-radius: 99px; font-size: 13px;
@@ -782,13 +794,28 @@
       the server does not also throw up a browser tab. Takes effect next start.
     </p>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    <label class="chk"><input type="checkbox" id="setBgScan"> Read file details in the background</label>
+    <p class="muted" style="font-size:13px;margin:6px 0 12px">
+      Works out resolution, codecs, audio and subtitle tracks and real running time
+      for files that have not been looked at yet, a few at a time. Your own disk
+      only — nothing leaves the machine. It stops the moment you press play.
+    </p>
+    <label class="chk"><input type="checkbox" id="setBgFetch"> Fetch artwork in the background</label>
+    <p class="muted" style="font-size:13px;margin:6px 0 4px">
+      Collects the posters and episode stills still missing, so you do not have to
+      press <b>Get artwork</b> once per folder. <b>This one uses the network</b>, a
+      handful of requests at a time — turn it off if you would rather NAVFLIX only
+      went online when you ask it to.
+    </p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
     <label class="f">
       <span>TMDB API key (optional)</span>
       <input type="text" id="setTmdb" placeholder="Leave empty to use the keyless iTunes catalogue">
     </label>
     <p class="muted" style="font-size:13px;margin:-8px 0 4px">
-      Posters are fetched only when you press <b>Get posters</b>, and are cached on
-      disk so it happens once. Without a key it uses the free, keyless Cinemeta catalogue,
+      Posters are fetched when you press <b>Get artwork</b> — and, if you have left
+      the switch above on, in the background too. Either way they are cached on
+      disk, so it happens once. Without a key it uses the free, keyless Cinemeta catalogue,
       which is IMDb-backed and covers mainstream films well. A free key from themoviedb.org improves
       coverage for obscure ones.
     </p>
@@ -1248,6 +1275,17 @@ function renderLibrary() {
       'value="' + esc(libQuery) + '">' +
       (libQuery ? '<span class="x" id="libClear" title="Clear">&#10005;</span>' : '') +
       '</span></div>';
+  }
+
+  // The background works across every folder, so this is the one view where
+  // saying so makes sense. It is left out of the filtered views for the same
+  // reason Continue watching is.
+  const bg = S.background && S.background.note;
+  if (bg && !q && libFilter === 'all' && libStatus === 'any') {
+    h += '<div class="bgline"><span class="dot"></span>' +
+      (bg.kind === 'scan' ? 'Reading file details' : 'Fetching artwork') +
+      ' &middot; ' + esc(bg.collection) +
+      (bg.left ? ' &middot; ' + bg.left + ' to go' : '') + '</div>';
   }
 
   // Only on the plain view: filtered or searched, the row would be answering a
@@ -1823,9 +1861,8 @@ const GUIDE = [
     ['Add a folder', 'Press <b>+ Add</b> in the top bar, or the <b>Add a folder</b> tile in the Library. ' +
       'Point it at a folder of films, or at a TV show. Nothing is copied or moved, since NAVFLIX only reads.'],
     ['Several at once', 'Every folder in the picker has a tick box, and <b>Tick all n here</b> takes the lot — a shelf of sixty shows is one trip through the dialog rather than sixty. Clicking the row still walks into it; only the box selects. Ticks are kept while you move around, so shows from one folder and films from another can go in together. Anything with no video files in it is skipped and the count says so.'],
-    ['Films or a show?', 'It works this out on its own. If most files look like episodes ' +
-      '(<code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, or a <code>Season 2</code> folder) ' +
-      'the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf.'],
+    ['Films or a show?', 'It works this out on its own: if most of the files look like episodes, the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf. Recognised forms include <code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, <code>S1 - 01</code>, a <code>Season 2</code> folder with <code>05 - Grilled</code> inside, and a plain run of <code>01. Title</code>, <code>02. Title</code> with no season named anywhere — which is how a lot of anime arrives.'],
+    ['Numbered films are still films', 'A film shelf is numbered the same way as that last case: <code>01 Iron Man (2008)</code>. What separates them is the year — a four-digit year in the name means it is a film, not episode one. Odd files do not matter either way, since the decision is made on what most of the folder looks like.'],
     ['Play', 'Press the big <b>Play</b> button on the billboard. VLC opens at the exact second you last stopped.'],
   ]],
 
@@ -2268,7 +2305,7 @@ function render() {
     }
     const job = S.artJob;
     const jobHere = job && job.collectionId === A.id;
-    const missing = A.queue.filter((m) => (!m.art || !m.backdrop) && !m.artTried).length;
+    const missing = A.queue.filter((m) => m.needsArt && !m.artTried).length;
     if (jobHere && job.running) {
       html += '<button class="btn btn-ghost" onclick="cancelArt()">' +
         'Fetching artwork &middot; ' + job.done + '/' + job.total + ' &middot; ' + job.found + ' found &mdash; stop</button>';
@@ -2994,6 +3031,8 @@ $('#btnSettings').onclick = () => {
   $('#setVlc').value = S.vlcPath;
   $('#setFull').checked = S.fullscreen;
   $('#setOpen').checked = S.openOnStart !== false;
+  $('#setBgScan').checked = !!(S.background && S.background.scan);
+  $('#setBgFetch').checked = !!(S.background && S.background.fetch);
   renderRemoteInfo();
   $('#setTmdb').value = S.tmdbKey || '';
   $('#setFullMode').checked = !!(A && A.fullMode);
@@ -3159,6 +3198,8 @@ $('#btnSaveSettings').onclick = async () => {
       fullscreen: $('#setFull').checked,
       tmdbKey: $('#setTmdb').value.trim(),
       openOnStart: $('#setOpen').checked,
+      backgroundScan: $('#setBgScan').checked,
+      backgroundFetch: $('#setBgFetch').checked,
       remoteEnabled: $('#setRemote').checked,
     };
     if (S.active) {
