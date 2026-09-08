@@ -121,6 +121,44 @@
     animation: bgpulse 1.8s ease-in-out infinite;
   }
   @keyframes bgpulse { 0%, 100% { opacity: .25 } 50% { opacity: .9 } }
+  /* A quiet panel, not a dashboard. It answers "how far along is all this"
+     and then gets out of the way. */
+  .cov { margin: 42px 0 8px; border-top: 1px solid var(--line); padding-top: 22px; }
+  .cov > h3 {
+    margin: 0 0 2px; font-size: 15px; letter-spacing: .01em;
+  }
+  .cov > .sub { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+  .covrow { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+  .covrow .lbl { width: 108px; flex: none; font-size: 13px; }
+  .covrow .track {
+    flex: 1; height: 6px; border-radius: 3px; background: var(--line);
+    overflow: hidden;
+  }
+  /* A span is inline, and an inline box ignores width and height outright —
+     so without this the bar is drawn at zero pixels and every row looks empty. */
+  .covrow .fill { display: block; height: 100%; background: var(--red); border-radius: 3px; }
+  .covrow .fill.done { background: #2e9e5b; }
+  .covrow .num {
+    width: 168px; flex: none; text-align: right;
+    font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .covgaps { margin: 18px 0 0; }
+  .covgaps table { border-collapse: collapse; width: 100%; max-width: 620px; }
+  .covgaps td {
+    padding: 5px 10px 5px 0; font-size: 13px;
+    border-bottom: 1px solid var(--line);
+  }
+  .covgaps td.n {
+    text-align: right; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .covgaps a { color: var(--text); text-decoration: none; cursor: pointer; }
+  .covgaps a:hover { text-decoration: underline; }
+  .covmore { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .libsort {
+    font: inherit; font-size: 13px; color: var(--text); background: #0f0f14;
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px;
+  }
   .libsearch { position: relative; margin-left: auto; }
   .libsearch input[type=text] {
     width: 250px; padding: 7px 32px 7px 14px; border-radius: 99px; font-size: 13px;
@@ -1112,6 +1150,13 @@ let libFilter = 'all';
 // any | done | todo. A second question about the same shelves — "which kind"
 // and "how far through" are independent, so these combine rather than replace.
 let libStatus = 'any';
+// Unlike the filters, this one is worth keeping. A filter answers a question you
+// are asking right now; an order is how you prefer to read the shelf, and having
+// to set it again on every launch would be the whole point missed. Wrapped
+// because storage can be unavailable or throw outright.
+let libSort = (function () {
+  try { return localStorage.getItem('navflix.libSort') || 'name'; } catch (e) { return 'name'; }
+})();
 let libQuery = '';   // the search box, for the same reason
 let libHits = null;  // { q, hits, total, folders } from /api/search
 let libHitTimer = null;
@@ -1140,6 +1185,32 @@ function setLibFilter(f) {
 
 // Clicking the one already on turns it off, which is how you get back to "any"
 // without a third button to explain.
+const LIB_SORTS = [
+  ['name', 'A\u2013Z'],
+  ['recent', 'Recently played'],
+  ['todo', 'Most left to watch'],
+  ['added', 'As added'],
+];
+
+function setLibSort(v) {
+  libSort = v;
+  try { localStorage.setItem('navflix.libSort', v); } catch (e) { /* not important */ }
+  renderLibrary();
+}
+
+// "As added" is the array as the server sends it, which is why it sorts nothing
+// at all rather than sorting by some stored index.
+function sortLibrary(list) {
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  if (libSort === 'name') return list.slice().sort(byName);
+  if (libSort === 'recent') return list.slice().sort((a, b) => byRecency(a, b) || byName(a, b));
+  if (libSort === 'todo') {
+    const left = (c) => (c.total || 0) - (c.done || 0);
+    return list.slice().sort((a, b) => left(b) - left(a) || byName(a, b));
+  }
+  return list;
+}
+
 function setLibStatus(v) {
   libStatus = libStatus === v ? 'any' : v;
   renderLibrary();
@@ -1210,6 +1281,70 @@ function renderContinue() {
   return h + '</div></div>';
 }
 
+// How much of the library has been read, illustrated and identified. All three
+// numbers come off the same collection cards the grid above is already drawn
+// from, so this costs nothing extra to work out.
+function renderCoverage(every) {
+  const live = every.filter((c) => !c.missing);
+  if (!live.length) return '';
+
+  const sum = (f) => live.reduce((n, c) => n + (f(c) || 0), 0);
+  const files = sum((c) => c.total);
+  if (!files) return '';
+
+  // Credits are counted in whatever unit the folder actually uses: a show is one
+  // lookup for the whole thing, a film shelf is one per film. Mixing those into a
+  // single "files" total would make sixty shows look like sixty missing items
+  // out of three thousand, which is true but useless.
+  const infoTotal = sum((c) => (c.infoUnit === 'show' ? 1 : c.total));
+  const rows = [
+    ['File details', files - sum((c) => c.noScan), files, 'read'],
+    ['Artwork', files - sum((c) => c.noArt), files, 'covered'],
+    ['Cast &amp; crew', infoTotal - sum((c) => c.noInfo), infoTotal, 'identified'],
+  ];
+
+  let h = '<div class="cov"><h3>Coverage</h3>' +
+    '<p class="sub">What the background has filled in so far, across every folder.</p>';
+
+  rows.forEach((r) => {
+    const pct = r[2] ? Math.round((r[1] / r[2]) * 100) : 100;
+    h += '<div class="covrow"><span class="lbl">' + r[0] + '</span>' +
+      '<span class="track"><span class="fill' + (r[1] >= r[2] ? ' done' : '') +
+      '" style="width:' + pct + '%"></span></span>' +
+      '<span class="num">' + r[1].toLocaleString() + ' of ' + r[2].toLocaleString() +
+      ' ' + r[3] + ' &middot; ' + pct + '%</span></div>';
+  });
+
+  // Which folders are holding it up. Ranked by what is outstanding, because that
+  // is the order the background will get to them in anyway.
+  const gaps = live
+    .map((c) => ({ c: c, left: (c.noScan || 0) + (c.noArt || 0) + (c.noInfo || 0) }))
+    .filter((g) => g.left > 0)
+    .sort((a, b) => b.left - a.left);
+
+  if (!gaps.length) {
+    h += '<p class="covmore">Nothing outstanding \u2014 every folder is read, illustrated and identified.</p>';
+    return h + '</div>';
+  }
+
+  h += '<div class="covgaps"><table>';
+  gaps.slice(0, 8).forEach((g) => {
+    const bits = [];
+    if (g.c.noScan) bits.push(g.c.noScan + ' to read');
+    if (g.c.noArt) bits.push(g.c.noArt + ' image' + (g.c.noArt === 1 ? '' : 's'));
+    if (g.c.noInfo) bits.push(g.c.infoUnit === 'show' ? 'no credits' : g.c.noInfo + ' without credits');
+    h += '<tr><td><a data-cov="' + g.c.id + '">' + esc(g.c.name) + '</a></td>' +
+      '<td class="n">' + bits.join(' &middot; ') + '</td></tr>';
+  });
+  h += '</table></div>';
+
+  if (gaps.length > 8) {
+    h += '<p class="covmore">and ' + (gaps.length - 8) + ' more folder' +
+      (gaps.length - 8 === 1 ? '' : 's') + ' with something outstanding.</p>';
+  }
+  return h + '</div>';
+}
+
 function renderLibrary() {
   const keepY = scrollY;     // a poll refresh must not jump you back to the top
   // The page is rebuilt on every keystroke and on every poll, so a search box
@@ -1245,7 +1380,7 @@ function renderLibrary() {
   const todoCount = forStatus.length - doneCount;
   if ((libStatus === 'done' && !doneCount) || (libStatus === 'todo' && !todoCount)) libStatus = 'any';
 
-  const list = (buckets[libFilter] || forType).filter(byStatus);
+  const list = sortLibrary((buckets[libFilter] || forType).filter(byStatus));
 
   let h = '<div class="libwrap"><h1 class="libtitle">Your library</h1>' +
     '<p class="libintro">' + (q
@@ -1274,7 +1409,11 @@ function renderLibrary() {
       '<span class="libsearch"><input type="text" id="libSearch" placeholder="Search your folders\u2026" ' +
       'value="' + esc(libQuery) + '">' +
       (libQuery ? '<span class="x" id="libClear" title="Clear">&#10005;</span>' : '') +
-      '</span></div>';
+      '</span>' +
+      '<select class="libsort" id="libSort" title="How to order the folders">' +
+      LIB_SORTS.map((o) => '<option value="' + o[0] + '"' +
+        (libSort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+      '</select></div>';
   }
 
   // The background works across every folder, so this is the one view where
@@ -1291,6 +1430,12 @@ function renderLibrary() {
   // Only on the plain view: filtered or searched, the row would be answering a
   // question you are no longer asking.
   if (!q && libFilter === 'all' && libStatus === 'any') h += renderContinue();
+
+  // At the foot, and only on the unfiltered view: it describes the whole
+  // library, so showing it under a filtered subset would be answering a
+  // different question than the one on screen.
+  const covHtml = (!q && libFilter === 'all' && libStatus === 'any')
+    ? renderCoverage(every) : '';
 
   h += '<div class="libgrid">';
 
@@ -1367,12 +1512,16 @@ function renderLibrary() {
     }
     h += '</div>';
   }
+  h += covHtml;      // inside the wrapper, so it keeps the page's margins
   h += '</div>';
   $('#app').innerHTML = h;
   scrollTo({ top: keepY, behavior: 'instant' });
 
   document.querySelectorAll('.libcard[data-id]').forEach((el) => {
     el.onclick = () => select(el.dataset.id);
+  });
+  document.querySelectorAll('[data-cov]').forEach((el) => {
+    el.onclick = () => select(el.dataset.cov);
   });
   document.querySelectorAll('.cwcard[data-c]').forEach((el) => {
     el.onclick = () => openHit(el.dataset.c, Number(el.dataset.i));
@@ -1383,6 +1532,8 @@ function renderLibrary() {
   document.querySelectorAll('.chip[data-status]').forEach((el) => {
     el.onclick = () => setLibStatus(el.dataset.status);
   });
+  const sortSel = $('#libSort');
+  if (sortSel) sortSel.onchange = () => setLibSort(sortSel.value);
 
   document.querySelectorAll('.hitrow[data-c]').forEach((el) => {
     el.onclick = () => openHit(el.dataset.c, Number(el.dataset.i));
@@ -2968,7 +3119,8 @@ function renderManage() {
     // the wrong one. This throws the answer away and looks it up again.
     (c.missing ? '' :
       '<button class="mini" data-act="reart" data-id="' + c.id + '" ' +
-      'title="Look this up again and replace the artwork">Re-identify</button>') +
+      'title="For when the wrong title was matched. Searches again and replaces every ' +
+      'image — a new season does not need this">Re-identify</button>') +
     '<button class="mini danger" data-act="remove" data-id="' + c.id + '">Remove</button></div>'
   ).join('');
 
@@ -2991,10 +3143,15 @@ function renderManage() {
         } else if (b.dataset.act === 'reart') {
           const sure = await uiConfirm({
             title: 'Look up "' + c.name + '" again?',
-            message: 'Useful when a remake was matched instead of the original.\n' +
-              'The catalogue is searched again and every image is replaced.\n' +
-              'Your progress is untouched.',
-            confirmLabel: 'Look it up',
+            // The dialog renders this with white-space: pre-line, so every \n is a
+            // hard break. One sentence per line, wrapping left to the dialog.
+            message: 'For when the wrong title was matched — a remake instead of the original, say.\n\n' +
+              'The catalogue is searched from scratch and every image is downloaded again, ' +
+              'not just the missing ones.\n\n' +
+              'A new season does not need this. New episodes are noticed on their own, ' +
+              'and only they are fetched.\n\n' +
+              'Your progress is untouched either way.',
+            confirmLabel: 'Look it up again',
           });
           if (!sure) return;
           S = await post('/api/art/fetch', { collectionId: id, force: true });

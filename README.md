@@ -67,6 +67,18 @@ already on turns it off.
 A **search box** sits beside them and narrows the grid as you type. All the
 counts follow the search, and **Esc** clears it.
 
+Beside that, how the grid is ordered:
+
+| Order | What it gives you |
+| --- | --- |
+| **A–Z** | Alphabetical, and number-aware, so *12 Monkeys* comes before *13 Reasons Why*. The default. |
+| **Recently played** | What you last watched, first. Folders you have never opened fall back to A–Z among themselves. |
+| **Most left to watch** | Biggest pile of unwatched first — what a marathon still owes you. |
+| **As added** | The order the folders went in, which is what the grid always used to do. |
+
+Unlike the filters, this one is remembered between launches: a filter answers a
+question you are asking now, but an order is how you prefer to read the shelf.
+
 Underneath, **Inside your folders** lists every title that matches, wherever it
 lives. Searching *iron* finds the Iron Man films across two shelves and
 *S08E06 · The Iron Throne* in Game of Thrones — episode names are searched, and
@@ -227,11 +239,30 @@ background, a little at a time, in **Settings**:
 | Switch | What it does | Default |
 | --- | --- | --- |
 | **Read file details in the background** | Resolution, codecs, tracks and real running time for files not looked at yet. Your own disk only. | On |
-| **Fetch artwork in the background** | The posters and episode stills still missing. **Uses the network.** | On |
+| **Fetch artwork in the background** | The posters and episode stills still missing, and the cast, crew and rating for each title. **Uses the network.** | On |
 
 The second is listed separately, and says so plainly, because it is the one that
 goes online. Turn it off and NAVFLIX is back to reaching the network only when
 you press **Get artwork**.
+
+**The folder you have open is finished first** — headers, artwork and credits —
+before anything else is touched. Without that the folder you are actually looking
+at could be twentieth in line, and a folder that is quietly twentieth is
+indistinguishable from a feature that does not work.
+
+After that it works across the whole library cheapest-first: every folder’s file
+headers, then every folder’s artwork, then every folder’s credits. Reading headers
+is local and quick, so a shelf of runtimes and resolutions arrives in about half
+an hour; the two network passes take hours and would otherwise hold that up
+behind them.
+
+### Coverage
+
+At the foot of the Library, three bars: how much of the library has been **read**,
+how much is **illustrated**, and how much is **identified**. Underneath, the folders
+still holding something back, worst first — click one to open it. Credits are
+counted in the unit each folder actually uses: a show is one lookup for the whole
+thing, a film shelf is one per film.
 
 Neither is ever allowed to compete with you:
 
@@ -581,6 +612,23 @@ than once per launch.
 | files opened | 981 | 0 |
 | read from disk | 1,085 MB | 0 MB |
 | opening a 282-episode show | 279 MB | 0 MB |
+
+## Why it stays quick with eighty folders
+
+Every poll rebuilds a card for each collection, and a card needs to know what the
+folder holds. Three answers are worked out once and reused rather than per file,
+because per file is how they get asked for:
+
+| Cached | Why it matters |
+| --- | --- |
+| The directory listing | One walk per folder every 8 seconds instead of one per request |
+| **Is this folder a show?** | Deciding it means running the episode test over every filename. The poster lookup, the backdrop lookup and the artwork count each ask per file, so a 356-episode folder was running a 356-file test 356 times — 126,000 regex passes for one card |
+| An artwork file’s timestamp | It goes in the image address so the browser notices a new picture. Read per file, that is 6,000 stats a request; most resolve to the same few hundred paths, since a whole show shares one poster |
+
+Measured on a library of 81 folders and 3,092 files, building all the cards went
+from **4,755 ms to 142 ms**, and a request from about 930 ms to 95 ms. The shape
+cache alone accounted for three seconds of it. All three expire with the
+directory listing, so a file you add is still noticed within seconds.
 
 ## Where state lives
 

@@ -489,12 +489,13 @@ function sittingLength(c) {
 // ---------------------------------------------------------------- library scan
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const SCAN_TTL = 8000;
 const scanCache = new Map(); // path -> { at, files }
 
 function scanLibrary(dir) {
   const now = Date.now();
   const hit = scanCache.get(dir);
-  if (hit && now - hit.at < 8000) return hit.files;
+  if (hit && now - hit.at < SCAN_TTL) return hit.files;
 
   const out = [];
   const walk = (abs, rel, depth) => {
@@ -618,7 +619,27 @@ function parseEpisode(rel) {
 }
 
 // A collection is a series when most of its files look like episodes.
+// Working the shape out means running the episode test over every filename in
+// the folder. That is cheap once and ruinous per file — and per file is exactly
+// how it gets asked for, because findArt, findBackdrop and artComplete each want
+// to know whether this is a show before they decide what to fall back to. A
+// folder of four hundred episodes was therefore running the test a hundred and
+// sixty thousand times to answer a question that cannot change between two files
+// in the same folder.
+//
+// Cached for as long as the directory listing it is derived from, and thrown
+// away with it whenever a folder is repointed or rescanned.
+const shapeCache = new Map(); // collection id -> { at, shape }
+
 function seriesShape(c) {
+  const hit = shapeCache.get(c.id);
+  if (hit && Date.now() - hit.at < SCAN_TTL) return hit.shape;
+  const shape = computeShape(c);
+  shapeCache.set(c.id, { at: Date.now(), shape: shape });
+  return shape;
+}
+
+function computeShape(c) {
   const files = scanLibrary(c.path);
   if (!files.length) return null;
   const names = {};
@@ -1493,6 +1514,7 @@ async function downloadTo(url, dest) {
   if (buf.length < 1024 || buf.length > 8 * 1024 * 1024) throw new Error('bad size');
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, buf);
+  stampCache.delete(dest);   // the picture changed, so its address must too
 }
 
 // The unit of work, pulled out of the jobs below so that pressing the button
@@ -1662,72 +1684,116 @@ function sweepIdle() {
 }
 
 function sweepReachable() {
-  return state.collections.filter((c) => {
+  const ok = state.collections.filter((c) => {
     try { return c.path && fs.existsSync(c.path); } catch (e) { return false; }
   });
+  // Order matters more than it looks. Working through the list as it happens to
+  // be stored means the folder you are staring at might be twentieth in line,
+  // and a folder that is quietly twentieth is indistinguishable from a feature
+  // that does not work. The one you have open goes first.
+  const open = ok.findIndex((c) => c.id === state.activeId);
+  if (open > 0) ok.unshift(ok.splice(open, 1)[0]);
+  return ok;
 }
 
 // Reading headers. probeFile is synchronous and costs about 75ms on an external
 // drive, so this hands control back between files exactly as the foreground
 // scan does — otherwise a slice of twenty-five would freeze the page for two
 // seconds at a time.
-async function sweepScan() {
-  for (const c of sweepReachable()) {
-    const todo = orderedFiles(c).filter((f) => !storedMedia(c, f.rel, f.size));
-    if (!todo.length) continue;
+async function sweepScanOne(c) {
+  const todo = orderedFiles(c).filter((f) => !storedMedia(c, f.rel, f.size));
+  if (!todo.length) return false;
 
-    sweepNote = { kind: 'scan', collection: c.name, left: todo.length };
-    let n = 0;
-    for (const f of todo) {
-      if (!sweepIdle()) break;
-      try {
-        if (!probeInto(c, f.rel)) markUnreadable(c, f.rel, f.size);
-      } catch (e) { markUnreadable(c, f.rel, f.size); }
-      await new Promise((resolve) => setImmediate(resolve));
-      if (++n >= SWEEP_READS) break;
-    }
-    saveNow();
-    return true;                                   // one collection per slice
+  sweepNote = { kind: 'scan', collection: c.name, left: todo.length };
+  let n = 0;
+  for (const f of todo) {
+    if (!sweepIdle()) break;
+    try {
+      if (!probeInto(c, f.rel)) markUnreadable(c, f.rel, f.size);
+    } catch (e) { markUnreadable(c, f.rel, f.size); }
+    await new Promise((resolve) => setImmediate(resolve));
+    if (++n >= SWEEP_READS) break;
   }
-  return false;
+  saveNow();
+  return true;
+}
+
+// Cast, crew, rating and plot — the half of Details that goes to the catalogue.
+// A show is a single lookup for the whole folder; a film shelf is one per film.
+async function sweepInfoOne(c) {
+  const series = seriesShape(c);
+
+  if (series) {
+    // Nothing can be looked up until the show has been identified, which the
+    // artwork sweep does. Until then this folder has no credits work to offer.
+    if (!c.seriesMeta || !c.seriesMeta.imdb) return false;
+    if (c.seriesMeta.info) return false;
+    sweepNote = { kind: 'info', collection: c.name, left: 1 };
+    try { await fetchShowInfo(c); } catch (e) { /* another slice */ }
+    saveNow();
+    return true;
+  }
+
+  const todo = buildQueue(c).filter((m) => {
+    const r = rec(c, m.rel);
+    return !r.info && !r.infoTried;
+  });
+  if (!todo.length) return false;
+
+  sweepNote = { kind: 'info', collection: c.name, left: todo.length };
+  let n = 0;
+  for (const item of todo) {
+    if (!sweepIdle()) break;
+    const r = rec(c, item.rel);
+    try {
+      // A film already looked up for artwork or subtitles knows its own id;
+      // only the ones that do not cost a second request.
+      const id = (r.info && r.info.imdb) || await imdbIdFor(item.title);
+      if (id) r.info = await fetchTitleInfo('movie', id);
+      // Either way the attempt is recorded. Unattended work must not return to
+      // a title the catalogue cannot name every fifteen seconds forever.
+      r.infoTried = true;
+    } catch (e) { /* the network can fail; leave it for next time */ }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (++n >= SWEEP_CALLS) break;
+  }
+  saveNow();
+  return true;
 }
 
 // Artwork, at the same pace the button uses. A show has to be identified before
 // any of its stills can be looked up, so that comes first and costs a slice of
 // its own.
-async function sweepFetch() {
-  for (const c of sweepReachable()) {
-    const series = seriesShape(c);
-    const todo = buildQueue(c).filter((m) => m.needsArt && !m.artTried);
-    if (!todo.length) continue;
+async function sweepArtOne(c) {
+  const series = seriesShape(c);
+  const todo = buildQueue(c).filter((m) => m.needsArt && !m.artTried);
+  if (!todo.length) return false;
 
-    sweepNote = { kind: 'art', collection: c.name, left: todo.length };
+  sweepNote = { kind: 'art', collection: c.name, left: todo.length };
 
-    if (series && !c.seriesMeta) {
-      try { await fetchSeriesMeta(c, series); } catch (e) { /* another time */ }
-      saveNow();
-      return true;
-    }
-
-    let n = 0;
-    for (const item of todo) {
-      if (!sweepIdle()) break;
-      try {
-        const outcome = series
-          ? await episodeArtFor(c, item, false)
-          : await filmArtFor(c, item, false);
-        // Work nobody is watching must not come back to the same file every
-        // fifteen seconds. An episode the catalogue has no still for is marked
-        // as attempted here, which pressing the button deliberately does not do.
-        if (outcome === 'none') rec(c, item.rel).artTried = true;
-      } catch (e) { /* the network can fail; try again next slice */ }
-      await new Promise((resolve) => setTimeout(resolve, series ? 200 : 320));
-      if (++n >= SWEEP_CALLS) break;
-    }
+  if (series && !c.seriesMeta) {
+    try { await fetchSeriesMeta(c, series); } catch (e) { /* another time */ }
     saveNow();
     return true;
   }
-  return false;
+
+  let n = 0;
+  for (const item of todo) {
+    if (!sweepIdle()) break;
+    try {
+      const outcome = series
+        ? await episodeArtFor(c, item, false)
+        : await filmArtFor(c, item, false);
+      // Work nobody is watching must not come back to the same file every
+      // fifteen seconds. An episode the catalogue has no still for is marked
+      // as attempted here, which pressing the button deliberately does not do.
+      if (outcome === 'none') rec(c, item.rel).artTried = true;
+    } catch (e) { /* the network can fail; try again next slice */ }
+    await new Promise((resolve) => setTimeout(resolve, series ? 200 : 320));
+    if (++n >= SWEEP_CALLS) break;
+  }
+  saveNow();
+  return true;
 }
 
 // A pass that finds nothing puts the sweep to sleep for ten minutes, which is
@@ -1737,12 +1803,42 @@ function wakeSweep() {
   sweepQuietUntil = 0;
 }
 
+// The order the three kinds of work are taken in, which decides what you see
+// happen and when.
+//
+// The folder you have open is finished completely first — headers, artwork and
+// credits — because that is the one you are looking at, and a folder quietly
+// twentieth in line is indistinguishable from a feature that does not work.
+//
+// After that, the cheapest kind across the whole library before the dearest.
+// Reading headers is local and quick, so a whole shelf of runtimes and
+// resolutions arrives in half an hour; artwork and credits are network-bound
+// and take hours, and would otherwise hold the quick work up behind them.
+async function sweepStep() {
+  const scan = state.backgroundScan !== false;
+  const net = state.backgroundFetch !== false;
+
+  // One listing per slice: this stats eighty folders, and the answer cannot
+  // change in the middle of one. It comes back with the open folder first.
+  const folders = sweepReachable();
+  const open = folders[0];
+  if (open && open.id === state.activeId) {
+    if (scan && await sweepScanOne(open)) return true;
+    if (net && await sweepArtOne(open)) return true;
+    if (net && await sweepInfoOne(open)) return true;
+  }
+
+  if (scan) for (const c of folders) if (await sweepScanOne(c)) return true;
+  if (net) for (const c of folders) if (await sweepArtOne(c)) return true;
+  if (net) for (const c of folders) if (await sweepInfoOne(c)) return true;
+  return false;
+}
+
 async function sweepTick() {
   if (sweeping || Date.now() < sweepQuietUntil || !sweepIdle()) return;
   sweeping = true;
   try {
-    if (state.backgroundScan !== false && await sweepScan()) return;
-    if (state.backgroundFetch !== false && await sweepFetch()) return;
+    if (await sweepStep()) return;
     // Nothing outstanding anywhere. Rebuilding every queue for eighty folders
     // every fifteen seconds to rediscover that would be the most expensive
     // thing this program does, so go quiet for a while instead.
@@ -2071,11 +2167,27 @@ function detailsFor(c) {
 // after the page has loaded, which a hard reload does not reach.
 //
 // Change the file, change the address.
+// The stamp is what makes the address change when the picture does, so it has to
+// be read off the file — but it is read once per file per request, and a library
+// of three thousand asks for six thousand of them. Most resolve to the same few
+// hundred paths, because a whole show falls back to one poster, so caching by
+// path collapses nearly all of it. Same lifetime as the lookup above it.
+const stampCache = new Map(); // absolute path -> { at, stamp }
+
+function artStamp(file) {
+  const hit = stampCache.get(file);
+  const now = Date.now();
+  if (hit && now - hit.at < ART_TTL) return hit.stamp;
+  let stamp = 0;
+  try { stamp = Math.round(fs.statSync(file).mtimeMs); } catch (e) { /* raced a download */ }
+  stampCache.set(file, { at: now, stamp: stamp });
+  return stamp;
+}
+
 function artUrl(c, rel, kind) {
   const found = kind === 'bg' ? findBackdrop(c, rel) : findArt(c, rel);
   if (!found) return null;
-  let stamp = 0;
-  try { stamp = Math.round(fs.statSync(found).mtimeMs); } catch (e) { /* raced a download */ }
+  const stamp = artStamp(found);
   return '/api/art?' + (kind === 'bg' ? 'kind=bg&' : '') +
     'c=' + encodeURIComponent(c.id) + '&rel=' + urlPart(rel) + '&v=' + stamp;
 }
@@ -2551,6 +2663,9 @@ function collectionCard(c) {
   const missing = !c.path || !fs.existsSync(c.path);
   const queue = missing ? [] : buildQueue(c);
   const cur = currentIndex(queue);
+  // Worked out once. It writes back to the collection when it changes, so
+  // calling it three times was three chances to save the same thing.
+  const shape = shapeOf(c, queue, missing);
   return {
     id: c.id,
     name: c.name,
@@ -2561,7 +2676,15 @@ function collectionCard(c) {
     done: queue.filter((m) => m.done).length,
     currentTitle: cur >= 0 ? queue[cur].title : null,
     noArt: queue.filter((m) => m.needsArt && !m.artTried).length,
-    series: shapeOf(c, queue, missing).series,
+    // The other two kinds of outstanding work, so the Library can say how far
+    // along the whole shelf is rather than making you open each folder to find
+    // out. A show's credits are one lookup for the folder, not one per episode.
+    noScan: queue.filter((m) => !storedMedia(c, m.rel, m.size)).length,
+    noInfo: shape.series
+      ? ((c.seriesMeta && c.seriesMeta.info) ? 0 : 1)
+      : queue.filter((m) => { const r = rec(c, m.rel); return !r.info && !r.infoTried; }).length,
+    infoUnit: shape.series ? 'show' : 'films',
+    series: shape.series,
     // A cover for the library grid: whatever the collection is up to next.
     art: (function () {
       const pick = queue[cur >= 0 ? cur : 0];
@@ -2587,7 +2710,7 @@ function collectionCard(c) {
         art: pick.backdrop || pick.art || null,
       };
     })(),
-    seasons: shapeOf(c, queue, missing).seasons,
+    seasons: shape.seasons,
     fullMode: !!c.fullMode,
     sittingLength: Math.round(sittingLength(c)),
     watchedToday: Math.round(c.day.secondsWatched),
@@ -2905,6 +3028,7 @@ const server = http.createServer(async (req, res) => {
       if (!dir || !fs.existsSync(dir)) return json(res, 400, { error: 'That folder does not exist.' });
       c.path = dir;   // progress is keyed on relative paths, so it survives the move
       scanCache.clear();
+      shapeCache.clear();
       artCache.clear();
       saveNow();
       wakeSweep();     // a folder that was unreachable may now have work in it
