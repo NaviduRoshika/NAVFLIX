@@ -132,6 +132,32 @@ function newId() {
   return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+// Tags are yours, not the catalogue's: "anime", "comfort", "with dad" — the
+// things no film database knows about your library. They sit on the folder
+// rather than on each file, because that is how you already think about them
+// (Naruto is anime, all two hundred episodes of it) and because eighty-one
+// decisions is a job you will finish where three thousand is not.
+//
+// Everything is lowercased and trimmed. Left alone, "Anime", "anime " and
+// "ANIME" become three different tags that each filter out most of what you
+// wanted, and you would never see why.
+// The limits live inside because load() runs near the top of this file, before a
+// const declared out here would be initialised — a hoisted function can be called
+// that early, the constants it closes over cannot.
+function cleanTags(v) {
+  const TAG_MAX = 24;
+  const TAGS_MAX = 12;
+  const raw = Array.isArray(v) ? v : String(v || '').split(',');
+  const out = [];
+  for (const t of raw) {
+    const tag = String(t || '').toLowerCase().trim().replace(/\s+/g, ' ').slice(0, TAG_MAX);
+    if (!tag) continue;
+    if (out.indexOf(tag) === -1) out.push(tag);
+    if (out.length >= TAGS_MAX) break;
+  }
+  return out;
+}
+
 function blankCollection(dir, name) {
   return {
     id: newId(),
@@ -146,6 +172,7 @@ function blankCollection(dir, name) {
     history: [],
     // 'auto' follows the filenames; 'series' and 'films' overrule them.
     shape: 'auto',
+    tags: [],
     // Filled in on the first scan; kept so an offline drive stays identifiable.
     isSeries: false,
     seasonCount: 0,
@@ -329,6 +356,7 @@ function load() {
         history: c.history || [],
         seriesMeta: c.seriesMeta || null,
         shape: (c.shape === 'series' || c.shape === 'films') ? c.shape : 'auto',
+        tags: cleanTags(c.tags),
         timesWatched: Number(c.timesWatched) || 0,
         complete: c.complete === true,
         // Cached shape, so a collection on an unplugged drive still knows
@@ -2776,6 +2804,7 @@ function collectionCard(c) {
     currentTitle: cur >= 0 ? queue[cur].title : null,
     timesWatched: Number(c.timesWatched) || 0,
     shape: c.shape || 'auto',
+    tags: Array.isArray(c.tags) ? c.tags : [],
     noArt: queue.filter((m) => m.needsArt && !m.artTried).length,
     // The other two kinds of outstanding work, so the Library can say how far
     // along the whole shelf is rather than making you open each folder to find
@@ -3134,6 +3163,15 @@ const server = http.createServer(async (req, res) => {
       artCache.clear();
       saveNow();
       wakeSweep();     // a folder that was unreachable may now have work in it
+      return json(res, 200, snapshot(local));
+    }
+
+    if (p === '/api/collections/tags' && req.method === 'POST') {
+      const b = await readBody(req);
+      const c = findCollection(b.id);
+      if (!c) return json(res, 400, { error: 'Unknown collection.' });
+      c.tags = cleanTags(b.tags);
+      saveNow();
       return json(res, 200, snapshot(local));
     }
 

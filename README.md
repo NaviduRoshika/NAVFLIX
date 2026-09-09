@@ -76,6 +76,31 @@ everything else counts as not watched, so the pair always adds up to the whole
 shelf; each button's count is what you would get by pressing it. Pressing the one
 already on turns it off.
 
+### Tags
+
+Your own labels, on a second row that appears once you have made some: *anime*,
+*comfort*, *sinhala*, *with dad* — the things no film database knows about your
+library. Set them under **Manage → Tags** on any folder, separated by commas; the
+dialog lists every tag already in use so you pick from what is there rather than
+inventing a second spelling of it.
+
+They sit on the **folder**, not on each file. That is how you already think about
+them — Naruto is anime, all 207 episodes of it, not individually — and it is the
+difference between ninety decisions you will finish and three thousand you will
+not. Half-finished tagging is worse than none: a filter for *anime* that returns
+forty of your sixty looks like it worked, and nothing tells you which forty.
+
+Selected tags narrow together, so *anime* + *shonen* means both. Each tag's count
+is worked out with the other filters and selections already applied, so a chip
+showing 3 gives you 3 and a chip showing 0 is visibly a dead end before you press
+it. Tags are lowercased and trimmed on the way in, so `Anime`, `anime ` and
+`ANIME` cannot quietly become three tags that each hide two thirds of what you
+were after.
+
+Catalogue **genres** are a separate thing and arrive on their own: Cinemeta
+returns them with every cast-and-crew lookup, and the Details view already
+filters by them within a folder. Tags are for what the catalogue cannot know.
+
 **All films** is the odd one out in that row, and sits apart from the rest. The
 others filter folders; this one throws the folders away and lists what is inside
 them — every film in the library on one screen, its shelf shown as a label rather

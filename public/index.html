@@ -155,6 +155,31 @@
   .covgaps a { color: var(--text); text-decoration: none; cursor: pointer; }
   .covgaps a:hover { text-decoration: underline; }
   .covmore { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  /* A second row rather than more chips in the first. Six controls plus a
+     search box plus a sort is already as much as that strip will carry, and
+     tags are a different question from "which kind of folder". */
+  .libtags {
+    display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+    margin: -6px 0 18px;
+  }
+  .libtags .lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+  .libtags .tag {
+    font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer;
+    background: #16161c; border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 11px;
+  }
+  .libtags .tag:hover { border-color: rgba(255,255,255,.28); }
+  .libtags .tag.on { background: var(--text); color: #000; border-color: var(--text); font-weight: 600; }
+  .libtags .tag .n { color: var(--muted); margin-left: 6px; font-size: 11px; }
+  .libtags .tag.on .n { color: rgba(0,0,0,.55); }
+  .libtags .tag.empty { opacity: .4; cursor: default; }
+  /* On a folder card, so you can see what a folder is tagged without opening
+     Manage. Deliberately quiet — it is a label, not a control. */
+  .libtagrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .libtagrow span {
+    font-size: 10.5px; color: var(--muted); background: rgba(255,255,255,.06);
+    border-radius: 4px; padding: 2px 6px;
+  }
   .libsort {
     font: inherit; font-size: 13px; color: var(--text); background: #0f0f14;
     border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px;
@@ -672,7 +697,14 @@
   }
   input:focus { outline: 2px solid var(--red); outline-offset: -1px; }
   .chk { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
-  .mrow { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+  /* Six controls and a folder path will not share one line. Left to fight over
+     it, the text column was squeezed to a sixty-pixel ribbon and the path broken
+     a character at a time. The name and details take the row; the controls sit
+     underneath, which also lines them up down the dialog. */
+  .mrow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
   .mrow:last-child { border: 0; }
   /* A select does not inherit .mini's look the way a button does, so it is
      matched here rather than left looking like a stray browser control. */
@@ -680,10 +712,15 @@
     font: inherit; font-size: 12.5px; color: var(--text); background: #16161c;
     border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px;
   }
-  .mrow .t { flex: 1; min-width: 0; }
-  .mrow .t b { display: block; }
-  .mrow .t span { color: var(--muted); font-size: 12px; word-break: break-all; }
+  .mrow .t { flex: 1 1 100%; min-width: 0; margin-bottom: 3px; }
+  .mrow .t b { display: block; margin-bottom: 2px; }
+  /* anywhere, not break-all: a long path breaks only when it genuinely will not
+     fit, instead of every line ending mid-word. */
+  .mrow .t span { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   h3.sec { font-size: 12px; text-transform: uppercase; letter-spacing: 1.6px; color: var(--muted); margin: 0 0 12px; }
+
+  /* Manage carries more per row than any other dialog, so it gets more room. */
+  #dlgManage { width: min(720px, 94vw); }
 
   /* ---- subtitle timing ---- */
   #dlgDrift, #dlgWhy { width: min(560px, 93vw); }
@@ -1225,6 +1262,10 @@ let libSort = (function () {
 // 'folders' is the Library as it has always been. 'films' throws the folders
 // away and lists what is inside them, which is the question you are asking when
 // you cannot remember which shelf a film is on.
+// Selected tags narrow together: picking "anime" then "finished" means both,
+// not either. Each chip's count is worked out with the others already applied,
+// so a chip showing 3 gives you 3 and one showing 0 is visibly a dead end.
+let libTagSel = [];
 let libView = 'folders';
 let films = null;        // fetched once when first asked for, then reused
 let filmsAt = 0;
@@ -1302,6 +1343,12 @@ async function setLibView(v) {
     filmsAt = 0;
   }
   if (libView === 'films') renderLibrary();
+}
+
+function toggleLibTag(t) {
+  const at = libTagSel.indexOf(t);
+  if (at === -1) libTagSel.push(t); else libTagSel.splice(at, 1);
+  renderLibrary();
 }
 
 function setLibStatus(v) {
@@ -1527,8 +1574,18 @@ function renderLibrary() {
     (libStatus === 'done' ? libFinished(c) : !libFinished(c));
   const byType = (c) => libFilter === 'all' ||
     (libFilter === 'films' ? !c.series : !!c.series);
+  // Every selected tag has to be present, not any of them.
+  const byTag = (c) => !libTagSel.length ||
+    libTagSel.every((t) => (c.tags || []).indexOf(t) !== -1);
 
-  const forType = all.filter(byStatus);
+  // A tag that no longer exists anywhere — the last folder carrying it was
+  // renamed or removed — would filter the library down to nothing with no
+  // visible cause, so it is dropped rather than left selected.
+  const tagsInUse = {};
+  every.forEach((c) => (c.tags || []).forEach((t) => { tagsInUse[t] = true; }));
+  libTagSel = libTagSel.filter((t) => tagsInUse[t]);
+
+  const forType = all.filter(byStatus).filter(byTag);
   const films = forType.filter((c) => !c.series);
   const series = forType.filter((c) => c.series);
   const buckets = { all: forType, films: films, series: series };
@@ -1541,10 +1598,28 @@ function renderLibrary() {
   // list behind it has ever been fetched.
   const filmTotal = every.reduce((t, c) => t + (c.series || c.missing ? 0 : (c.total || 0)), 0);
 
-  const forStatus = all.filter(byType);
+  const forStatus = all.filter(byType).filter(byTag);
   const doneCount = forStatus.filter(libFinished).length;
   const todoCount = forStatus.length - doneCount;
   if ((libStatus === 'done' && !doneCount) || (libStatus === 'todo' && !todoCount)) libStatus = 'any';
+
+  // Tag counts answer "what do I get if I press this", so they are worked out
+  // with the kind and status filters applied and this tag added to whatever is
+  // already selected — the same rule the chips above already follow.
+  const tagCounts = {};
+  Object.keys(tagsInUse).sort().forEach((t) => {
+    tagCounts[t] = all.filter(byType).filter(byStatus).filter((c) =>
+      (c.tags || []).indexOf(t) !== -1 &&
+      libTagSel.every((o) => o === t || (c.tags || []).indexOf(o) !== -1)).length;
+  });
+
+  // The library as it comes, with nothing narrowed. Continue watching, the
+  // Coverage panel and the Add tile all describe the whole library, so each of
+  // them answers a question you are no longer asking the moment anything is
+  // filtered — and every one of them was a separate copy of this condition that
+  // had to be remembered whenever a new filter appeared. One name, one place.
+  const plainView = !q && !libTagSel.length &&
+    libFilter === 'all' && libStatus === 'any';
 
   const list = sortLibrary((buckets[libFilter] || forType).filter(byStatus));
 
@@ -1592,11 +1667,28 @@ function renderLibrary() {
       '</select></div>';
   }
 
+  // Only once you have made some. An empty row explaining a feature you have not
+  // used is a worse introduction than the feature simply appearing when it has
+  // something to show.
+  const tagNames = Object.keys(tagCounts);
+  if (tagNames.length) {
+    h += '<div class="libtags"><span class="lbl">Tags</span>' +
+      tagNames.map((t) => {
+        const on = libTagSel.indexOf(t) !== -1;
+        const cnt = tagCounts[t];
+        return '<button class="tag' + (on ? ' on' : '') + (cnt || on ? '' : ' empty') +
+          '" data-tag="' + esc(t) + '"' + (cnt || on ? '' : ' disabled') + '>' +
+          esc(t) + '<span class="n">' + cnt + '</span></button>';
+      }).join('') +
+      (libTagSel.length ? '<button class="tag" data-tag="">clear</button>' : '') +
+      '</div>';
+  }
+
   // The background works across every folder, so this is the one view where
   // saying so makes sense. It is left out of the filtered views for the same
   // reason Continue watching is.
   const bg = S.background && S.background.note;
-  if (bg && !q && libFilter === 'all' && libStatus === 'any') {
+  if (bg && plainView) {
     h += '<div class="bgline"><span class="dot"></span>' +
       (bg.kind === 'scan' ? 'Reading file details' : 'Fetching artwork') +
       ' &middot; ' + esc(bg.collection) +
@@ -1605,14 +1697,14 @@ function renderLibrary() {
 
   // Only on the plain view: filtered, searched, or looking at films rather than
   // folders, the row would be answering a question you are no longer asking.
-  if (!q && libView === 'folders' && libFilter === 'all' && libStatus === 'any') {
+  if (plainView && libView === 'folders') {
     h += renderContinue();
   }
 
   // At the foot, and only on the unfiltered view: it describes the whole
   // library, so showing it under a filtered subset would be answering a
   // different question than the one on screen.
-  const covHtml = (!q && libFilter === 'all' && libStatus === 'any')
+  const covHtml = plainView
     ? renderCoverage(every) : '';
 
   // The film list replaces the folder grid outright rather than sitting under
@@ -1654,12 +1746,15 @@ function renderLibrary() {
       '<div class="libsub">' + sub + '</div>' +
       '<div class="libbar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
       '<div class="libcount">' + c.done + ' / ' + c.total + '</div>' +
+      ((c.tags && c.tags.length)
+        ? '<div class="libtagrow">' + c.tags.map((t) => '<span>' + esc(t) + '</span>').join('') + '</div>'
+        : '') +
     '</div>';
   });
 
   // The Add tile belongs with everything, not tucked at the end of a filtered
   // slice where it looks like one of the matches.
-  if (libFilter === 'all' && libStatus === 'any' && !q) {
+  if (plainView) {
     h += '<div class="libcard libadd" onclick="openAdd()">' +
       '<div class="libart addart">+</div><div class="libname">Add a folder</div>' +
       '<div class="libsub">Films or a TV show</div></div>';
@@ -1738,6 +1833,12 @@ function wireLibrary(typing, caret) {
   });
   document.querySelectorAll('.chip[data-view]').forEach((el) => {
     el.onclick = () => setLibView(libView === el.dataset.view ? 'folders' : el.dataset.view);
+  });
+  document.querySelectorAll('.libtags .tag[data-tag]').forEach((el) => {
+    el.onclick = () => {
+      if (!el.dataset.tag) { libTagSel = []; return renderLibrary(); }   // clear
+      toggleLibTag(el.dataset.tag);
+    };
   });
   const sortSel = $('#libSort');
   if (sortSel) sortSel.onchange = () => setLibSort(sortSel.value);
@@ -2226,6 +2327,11 @@ const GUIDE = [
       '<b>set to films</b> when you did. The choice is stored, so it survives a rescan, a move to another drive ' +
       'and any later change to the rules. Forcing a folder to be a show when nothing in it parses as an episode ' +
       'is fine: its files group under <i>Not recognised as episodes</i> instead of by season, and none are hidden.'],
+    ['Your own tags', '<b>Manage → Tags</b> on any folder: <i>anime</i>, <i>comfort</i>, <i>sinhala</i>, <i>with dad</i> — ' +
+      'whatever the catalogue cannot know. They go on the folder rather than each file, so a show is tagged once ' +
+      'instead of two hundred times. A row of them appears in the Library once you have made some; picking two ' +
+      'means both, and each count is what you get by pressing it, so a 0 is a visible dead end. Spelling is ' +
+      'normalised, so <i>Anime</i> and <i>anime</i> cannot become two tags that each hide half your shows.'],
     ['Play', 'Press the big <b>Play</b> button on the billboard. VLC opens at the exact second you last stopped.'],
   ]],
 
@@ -3357,6 +3463,9 @@ function renderManage() {
       : '<b>set to ' + (c.shape === 'series' ? 'a show' : 'films') + '</b>') +
     '</span></div>' +
     '<button class="mini" data-act="rename" data-id="' + c.id + '">Rename</button>' +
+    '<button class="mini" data-act="tags" data-id="' + c.id + '" ' +
+    'title="Your own labels for this folder — anime, comfort, with dad">Tags' +
+    ((c.tags && c.tags.length) ? ' (' + c.tags.length + ')' : '') + '</button>' +
     '<button class="mini" data-act="repath" data-id="' + c.id + '">Folder</button>' +
     // The detector draws its line at "most of the folder looks like episodes",
     // and a folder can sit the wrong side of it either way.
@@ -3403,6 +3512,26 @@ function renderManage() {
           });
           if (!name) return;
           S = await post('/api/collections/rename', { id: id, name: name });
+        } else if (b.dataset.act === 'tags') {
+          // Showing what is already in use is most of the value: without it you
+          // invent "anime" here and "Anime " there and end up with two tags that
+          // each hide half of what you were looking for. They are lowercased and
+          // trimmed on the way in as well, so a slip cannot split a tag in two.
+          const inUse = [];
+          S.collections.forEach((x) => (x.tags || []).forEach((t) => {
+            if (inUse.indexOf(t) === -1) inUse.push(t);
+          }));
+          const tags = await uiPrompt({
+            title: 'Tags for "' + c.name + '"',
+            message: 'Separate them with commas. They label the whole folder, so ' +
+              'a show is tagged once rather than once per episode.\n\n' +
+              (inUse.length ? 'Already in use: ' + inUse.sort().join(', ') : 'No tags yet.'),
+            label: 'Tags',
+            input: (c.tags || []).join(', '),
+            confirmLabel: 'Save tags',
+          });
+          if (tags === null) return;
+          S = await post('/api/collections/tags', { id: id, tags: tags });
         } else if (b.dataset.act === 'repath') {
           return openRepath(id);
         } else if (b.dataset.act === 'reart') {
