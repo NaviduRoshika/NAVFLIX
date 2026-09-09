@@ -55,6 +55,18 @@ films to series and none the other way; the closest film shelf to the threshold
 sits at 3% of its files looking like episodes, against 76% for the least
 episode-like show.
 
+**When it guesses wrong**, say so. Every row in **Manage** has an Auto / Films /
+TV series dropdown, and the line under the folder name says which way it went —
+*read as films* when the filenames decided it, **set to films** in bold when you
+did. The choice is stored, so it survives a rescan, a move to another drive, and
+any later change to the detection rules.
+
+The threshold is "most of the folder looks like episodes", and a folder can sit
+the wrong side of it either way: a documentary series with plain names reads as
+films, a numbered box set of films reads as a show. Forcing a folder to be a show
+when nothing in it parses as an episode is allowed — its files are simply grouped
+under *Not recognised as episodes* rather than by season, and nothing is hidden.
+
 The Library files each collection as a **film shelf** or a **TV series** based on
 what is in its folder, and offers *Everything / Films / TV series* buttons above
 the grid, plus **Watched / Not watched** beside them. The two groups ask

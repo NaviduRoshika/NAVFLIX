@@ -674,6 +674,12 @@
   .chk { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
   .mrow { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--line); }
   .mrow:last-child { border: 0; }
+  /* A select does not inherit .mini's look the way a button does, so it is
+     matched here rather than left looking like a stray browser control. */
+  select.mshape {
+    font: inherit; font-size: 12.5px; color: var(--text); background: #16161c;
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px;
+  }
   .mrow .t { flex: 1; min-width: 0; }
   .mrow .t b { display: block; }
   .mrow .t span { color: var(--muted); font-size: 12px; word-break: break-all; }
@@ -2215,6 +2221,11 @@ const GUIDE = [
     ['Several at once', 'Every folder in the picker has a tick box, and <b>Tick all n here</b> takes the lot — a shelf of sixty shows is one trip through the dialog rather than sixty. Clicking the row still walks into it; only the box selects. Ticks are kept while you move around, so shows from one folder and films from another can go in together. Anything with no video files in it is skipped and the count says so.'],
     ['Films or a show?', 'It works this out on its own: if most of the files look like episodes, the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf. Recognised forms include <code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, <code>S1 - 01</code>, a <code>Season 2</code> folder with <code>05 - Grilled</code> inside, and a plain run of <code>01. Title</code>, <code>02. Title</code> with no season named anywhere — which is how a lot of anime arrives.'],
     ['Numbered films are still films', 'A film shelf is numbered the same way as that last case: <code>01 Iron Man (2008)</code>. What separates them is the year — a four-digit year in the name means it is a film, not episode one. Odd files do not matter either way, since the decision is made on what most of the folder looks like.'],
+    ['When it guesses wrong', 'Every row in <b>Manage</b> has an <b>Auto / Films / TV series</b> dropdown, and the ' +
+      'line under the folder name says which way it went — <i>read as films</i> when the filenames decided, ' +
+      '<b>set to films</b> when you did. The choice is stored, so it survives a rescan, a move to another drive ' +
+      'and any later change to the rules. Forcing a folder to be a show when nothing in it parses as an episode ' +
+      'is fine: its files group under <i>Not recognised as episodes</i> instead of by season, and none are hidden.'],
     ['Play', 'Press the big <b>Play</b> button on the billboard. VLC opens at the exact second you last stopped.'],
   ]],
 
@@ -3338,9 +3349,23 @@ function renderManage() {
   if (!S.collections.length) { $('#manageBody').innerHTML = '<div class="muted">No collections yet.</div>'; return; }
   $('#manageBody').innerHTML = S.collections.map((c) =>
     '<div class="mrow"><div class="t"><b>' + esc(c.name) + (c.missing ? ' <span class="warn">&#9888;</span>' : '') +
-    '</b><span>' + esc(c.path) + ' &middot; ' + c.done + '/' + c.total + ' films &middot; ' + c.episodeMinutes + ' min episodes</span></div>' +
+    '</b><span>' + esc(c.path) + ' &middot; ' + c.done + '/' + c.total + ' films &middot; ' + c.episodeMinutes + ' min episodes' +
+    // Say which way it was decided, so "Auto" is not a mystery about what it
+    // actually chose.
+    ' &middot; ' + (c.shape === 'auto'
+      ? 'read as ' + (c.series ? 'a show' : 'films')
+      : '<b>set to ' + (c.shape === 'series' ? 'a show' : 'films') + '</b>') +
+    '</span></div>' +
     '<button class="mini" data-act="rename" data-id="' + c.id + '">Rename</button>' +
     '<button class="mini" data-act="repath" data-id="' + c.id + '">Folder</button>' +
+    // The detector draws its line at "most of the folder looks like episodes",
+    // and a folder can sit the wrong side of it either way.
+    (c.missing ? '' :
+      '<select class="mini mshape" data-id="' + c.id + '" title="Films or a show. Auto follows the filenames.">' +
+      [['auto', 'Auto'], ['films', 'Films'], ['series', 'TV series']].map((o) =>
+        '<option value="' + o[0] + '"' + ((c.shape || 'auto') === o[0] ? ' selected' : '') + '>' +
+        o[1] + '</option>').join('') +
+      '</select>') +
     // Remakes share a title with the original, so a show can be identified as
     // the wrong one. This throws the answer away and looks it up again.
     (c.missing ? '' :
@@ -3349,6 +3374,20 @@ function renderManage() {
       'image — a new season does not need this">Re-identify</button>') +
     '<button class="mini danger" data-act="remove" data-id="' + c.id + '">Remove</button></div>'
   ).join('');
+
+  $('#manageBody').querySelectorAll('select.mshape').forEach((sel) => {
+    sel.onchange = async () => {
+      try {
+        S = await post('/api/collections/shape', { id: sel.dataset.id, shape: sel.value });
+        lastSig = '';
+        renderManage();          // the line under the name has changed too
+        paint();
+        toast(sel.value === 'auto'
+          ? 'Back to reading the filenames.'
+          : 'Treating it as ' + (sel.value === 'series' ? 'a TV series' : 'films') + '.');
+      } catch (e) { toast(e.message); }
+    };
+  });
 
   $('#manageBody').querySelectorAll('button').forEach((b) => {
     b.onclick = async () => {

@@ -144,6 +144,8 @@ function blankCollection(dir, name) {
     progress: {},
     day: { key: '', secondsWatched: 0 },
     history: [],
+    // 'auto' follows the filenames; 'series' and 'films' overrule them.
+    shape: 'auto',
     // Filled in on the first scan; kept so an offline drive stays identifiable.
     isSeries: false,
     seasonCount: 0,
@@ -326,6 +328,7 @@ function load() {
         day: Object.assign({ key: '', secondsWatched: 0 }, c.day),
         history: c.history || [],
         seriesMeta: c.seriesMeta || null,
+        shape: (c.shape === 'series' || c.shape === 'films') ? c.shape : 'auto',
         timesWatched: Number(c.timesWatched) || 0,
         complete: c.complete === true,
         // Cached shape, so a collection on an unplugged drive still knows
@@ -645,6 +648,14 @@ function seriesShape(c) {
   return shape;
 }
 
+// Films or a show. Guessed from the filenames, because that is what is actually
+// there — but it is a guess, drawn at "most of the folder looks like episodes",
+// and a folder can sit the wrong side of that line. A documentary series with
+// plain names reads as films; a numbered box set of films reads as a show. So the
+// guess can be overruled per collection and the answer kept.
+//
+// The override is stored rather than inferred, so it survives a rescan, a move to
+// another drive, and any later change to the detection rules.
 function computeShape(c) {
   const files = scanLibrary(c.path);
   if (!files.length) return null;
@@ -656,7 +667,14 @@ function computeShape(c) {
     eps++;
     if (p.show) names[p.show] = (names[p.show] || 0) + 1;
   }
-  if (eps / files.length < 0.6) return null;
+
+  const guessed = eps / files.length >= 0.6;
+  const series = c.shape === 'series' ? true : (c.shape === 'films' ? false : guessed);
+  if (!series) return null;
+
+  // Forcing a folder to be a show may leave nothing that parsed as an episode,
+  // so there is no name to take from the files. The folder's own name is the
+  // best answer left, and it is usually the right one.
   const show = Object.keys(names).sort((a, b) => names[b] - names[a])[0] || path.basename(c.path);
   return { show: show, episodes: eps };
 }
@@ -2757,6 +2775,7 @@ function collectionCard(c) {
     done: queue.filter((m) => m.done).length,
     currentTitle: cur >= 0 ? queue[cur].title : null,
     timesWatched: Number(c.timesWatched) || 0,
+    shape: c.shape || 'auto',
     noArt: queue.filter((m) => m.needsArt && !m.artTried).length,
     // The other two kinds of outstanding work, so the Library can say how far
     // along the whole shelf is rather than making you open each folder to find
@@ -3115,6 +3134,25 @@ const server = http.createServer(async (req, res) => {
       artCache.clear();
       saveNow();
       wakeSweep();     // a folder that was unreachable may now have work in it
+      return json(res, 200, snapshot(local));
+    }
+
+    if (p === '/api/collections/shape' && req.method === 'POST') {
+      const b = await readBody(req);
+      const c = findCollection(b.id);
+      if (!c) return json(res, 400, { error: 'Unknown collection.' });
+      const want = String(b.shape || 'auto');
+      if (['auto', 'series', 'films'].indexOf(want) === -1) {
+        return json(res, 400, { error: 'Not a shape.' });
+      }
+      c.shape = want;
+      // Nearly everything downstream reads the shape: what a title is called,
+      // whether artwork falls back to the show's, how subtitles are looked up.
+      // All of it has to be worked out again.
+      shapeCache.clear();
+      artCache.clear();
+      saveNow();
+      wakeSweep();
       return json(res, 200, snapshot(local));
     }
 
