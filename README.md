@@ -584,6 +584,13 @@ reports them.
   episode back to not started and clears any resume points inside it. Both ask
   first, and neither touches another season.
 - **Play** on any row jumps the queue without losing anyone's position.
+- **Play on something already watched** starts it from the beginning. Marking a
+  title watched parks its resume point at the very end, so playing it again
+  would otherwise begin at the last second and refuse with *there is nothing
+  left to watch in this file* — true of the resume point, useless as an answer
+  to "play this". Picking a finished title on purpose can only mean watching it
+  again. It stays ticked while you do, so rewatching one episode of a finished
+  show neither un-finishes the show nor counts it through a second time.
 - When a sitting ends the button reads *Next 40m* (or whatever you set). Press it
   as many times as you like — nothing stops you at a daily total.
 

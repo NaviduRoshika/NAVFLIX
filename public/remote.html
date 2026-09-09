@@ -467,8 +467,11 @@ function renderNow() {
   const sel = $('#subPick');
   if (sel) sel.onchange = () => act('/api/subs', { index: item.index, choice: sel.value });
   on('play', async () => {
-    // A watched title needs rewinding first, or it would finish instantly.
-    if (item.done) await act('/api/mark', { index: item.index, rewind: true });
+    // A watched title used to need rewinding here or it would finish instantly.
+    // The server now starts a finished title from the top by itself, which the
+    // desktop never did — so the two behave alike, and the rewind that also
+    // cleared `done` (and so counted the show as finished all over again when
+    // the episode ended) is gone.
     await act('/api/play', { index: item.index });
   });
   on('skip', async () => {

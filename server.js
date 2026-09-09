@@ -2314,6 +2314,26 @@ function play(c, index, extraSeconds) {
   const file = path.join(c.path, item.rel);
   if (!fs.existsSync(file)) throw new Error('File is missing: ' + item.rel);
 
+  // Marking something watched parks its resume point at the very end, so asking
+  // to play it again used to start at the last second and refuse outright with
+  // "there is nothing left to watch in this file" — which is true of the resume
+  // point and useless as an answer to "play this". Picking a finished title on
+  // purpose can only mean watching it again, so it starts from the top.
+  //
+  // The resume point has to be cleared as well as the start time: while VLC is
+  // running, progress is recorded as max(stored position, current time), and a
+  // stored position still sitting at the end would swallow every update.
+  //
+  // What is deliberately not touched is `done`. Replaying one episode of a
+  // finished show is not un-finishing the show, and quietly clearing the flag
+  // would make the collection incomplete and then count a second time through
+  // when the episode ended.
+  const atEnd = item.duration > 0 && item.position >= item.duration - 5;
+  if (item.done || atEnd) {
+    rec(c, item.rel).position = 0;
+    item.position = 0;
+  }
+
   const start = Math.max(0, Math.floor(item.position));
   const budget = Math.floor(sittingLength(c)) + (Number(extraSeconds) || 0);
   const whole = !!c.fullMode;                  // watch it all in one go
