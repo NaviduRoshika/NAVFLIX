@@ -638,8 +638,42 @@ subtitle tracks found inside each video, so that is worked out once rather than
 on every launch, and — once you have run a Details scan — what was read out of
 each file and the cast and crew for each title. Together those add roughly two
 megabytes for a library of a thousand files.
-Settings → **Erase this collection's progress** resets one without touching the
-others.
+### Finishing, and going round again
+
+Settings → **The whole collection** has the two collection-wide actions:
+
+- **Mark everything watched** — for a show you had already seen before NAVFLIX
+  met it, so you do not have to tick six seasons one at a time.
+- **Start it over** — every title back to not started, for a rewatch. The
+  finished screen offers the same thing as **Watch it again**, which is where
+  you actually notice you want it.
+
+Neither touches anything else the record holds. That matters more than it used
+to: a progress record now also carries the file's resolution and tracks, its cast
+and crew, and any subtitle offset you tuned by hand. Watching something twice
+should not cost you all of that.
+
+**How many times through.** Every time a folder becomes complete the count goes
+up, and the finished screen reads *3rd time through* while the Library card says
+*3 times*. A folder seen once says nothing, because that is the ordinary case.
+
+It is counted where the queue is already built rather than at each of the four
+places a title can be marked done — watching the last episode, ticking one,
+ticking a season, or marking the lot all end in the same state, and all four
+should count alike. A stored flag remembers that a completion has been counted;
+without it every poll after the last episode would look like a fresh one and the
+number would run away. The flag clears the moment anything goes back to
+unwatched, which is what makes **Start it over** the beginning of the next time
+through.
+
+One consequence worth knowing: un-ticking an episode and ticking it straight back
+finishes the folder again, so the count rises. It has genuinely been completed
+twice — but if you were only correcting a mis-click, the number will say
+otherwise.
+
+Settings → **Erase this collection's progress** is the separate, heavier thing.
+It forgets the folder entirely, that scan data included, and all of it has to be
+read and fetched again. Other collections are untouched either way.
 
 ### It is looked after for you
 

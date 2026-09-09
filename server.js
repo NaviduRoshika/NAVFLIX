@@ -147,6 +147,10 @@ function blankCollection(dir, name) {
     // Filled in on the first scan; kept so an offline drive stays identifiable.
     isSeries: false,
     seasonCount: 0,
+    // How many times you have been through it, and whether it is through now.
+    // The flag is what tells one completion from the same one seen again.
+    timesWatched: 0,
+    complete: false,
   };
 }
 
@@ -322,6 +326,8 @@ function load() {
         day: Object.assign({ key: '', secondsWatched: 0 }, c.day),
         history: c.history || [],
         seriesMeta: c.seriesMeta || null,
+        timesWatched: Number(c.timesWatched) || 0,
+        complete: c.complete === true,
         // Cached shape, so a collection on an unplugged drive still knows
         // whether it is a show. Refreshed whenever the folder is readable.
         isSeries: !!c.isSeries,
@@ -2626,6 +2632,25 @@ function browse(dir) {
 // those names separates shows from film shelves cleanly (measured on a real
 // library: 99-100% of names parse as episodes for shows, 0% for film folders),
 // so the Library can sort itself without asking you to plug the drive in.
+// A folder that has just become complete has been through once more than it had
+// a moment ago. Worked out here rather than at the four separate places a title
+// can be marked done, because those are four chances to forget one — and because
+// finishing the last episode by watching it should count exactly like finishing
+// it by pressing a button.
+//
+// The stored flag is the whole trick: without it every poll after the last
+// episode would look like a fresh completion and the count would run away. It
+// goes false again the moment anything is put back to unwatched, which is what
+// makes Start it over the beginning of a second time through.
+function noteCompletion(c, queue, missing) {
+  if (missing || !queue.length) return;
+  const complete = queue.every((m) => m.done);
+  if (complete === !!c.complete) return;
+  if (complete) c.timesWatched = (Number(c.timesWatched) || 0) + 1;
+  c.complete = complete;
+  save();
+}
+
 function shapeOf(c, queue, missing) {
   if (!missing) {
     const series = !!seriesShape(c);
@@ -2666,6 +2691,7 @@ function collectionCard(c) {
   // Worked out once. It writes back to the collection when it changes, so
   // calling it three times was three chances to save the same thing.
   const shape = shapeOf(c, queue, missing);
+  noteCompletion(c, queue, missing);
   return {
     id: c.id,
     name: c.name,
@@ -2675,6 +2701,7 @@ function collectionCard(c) {
     total: queue.length,
     done: queue.filter((m) => m.done).length,
     currentTitle: cur >= 0 ? queue[cur].title : null,
+    timesWatched: Number(c.timesWatched) || 0,
     noArt: queue.filter((m) => m.needsArt && !m.artTried).length,
     // The other two kinds of outstanding work, so the Library can say how far
     // along the whole shelf is rather than making you open each folder to find
@@ -2796,6 +2823,7 @@ function snapshot(local) {
       totalDuration: totalDuration,
       watched: watched,
       daysWatched: days.size,
+      timesWatched: Number(c.timesWatched) || 0,
       history: c.history.slice(0, 40),
     },
   });
@@ -3253,6 +3281,34 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/mark' && req.method === 'POST') {
       const b = await readBody(req);
       const c = target(b);
+
+      // The whole folder at once, in both directions. Marking it all watched is
+      // for a show you already saw before NAVFLIX ever met it; putting it all back
+      // is what starting a rewatch means.
+      //
+      // Note what this deliberately does NOT touch. A progress record also holds
+      // everything the background has learned about the file — its resolution and
+      // tracks, its cast and crew, the subtitle offset you tuned by hand. Erase
+      // this collection's progress throws all of that away and it has to be read
+      // and fetched again. Watching something twice should not cost you that.
+      if (b.all === true) {
+        const done = b.done !== false;
+        let n = 0;
+        for (const m of buildQueue(c)) {
+          const r = rec(c, m.rel);
+          if (done) {
+            r.done = true;
+            if (r.duration) r.position = r.duration;
+          } else {
+            r.done = false;
+            r.position = 0;
+          }
+          n++;
+        }
+        if (!n) return json(res, 400, { error: 'Nothing playable in this folder.' });
+        saveNow();
+        return json(res, 200, Object.assign(snapshot(local), { changed: n }));
+      }
 
       // A whole season at once. Addressed by season number rather than by a list
       // of indexes, so it cannot act on a stale idea of what is in the folder.

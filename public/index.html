@@ -870,9 +870,23 @@
     <div id="remoteInfo" class="muted" style="font-size:13px;margin:0 0 10px"></div>
     <button class="mini" id="btnNewPin">New pairing code</button>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
-    <h3 class="sec">Danger zone <span id="dzName" class="muted"></span></h3>
+    <h3 class="sec">The whole collection <span id="dzName" class="muted"></span></h3>
+    <button class="mini" id="btnMarkAll">Mark everything watched</button>
+    <button class="mini" id="btnStartOver">Start it over</button>
+    <p class="muted" style="font-size:13px;margin:8px 0 14px">
+      <b>Mark everything watched</b> is for a show you had already seen before
+      NAVFLIX met it. <b>Start it over</b> puts every episode back to unseen for a
+      rewatch, and keeps what has been read and fetched — resolutions, cast,
+      artwork and any subtitle offsets you tuned.
+    </p>
+    <h3 class="sec">Danger zone</h3>
     <button class="mini" id="btnResetDay">Reset today's watched time</button>
     <button class="mini danger" id="btnResetAll">Erase this collection's progress</button>
+    <p class="muted" style="font-size:13px;margin:8px 0 0">
+      Erasing also discards everything the background worked out about these files
+      — resolutions, tracks, cast and crew, subtitle offsets — all of which has to
+      be read and fetched again. To watch it again, use <b>Start it over</b>.
+    </p>
   </div>
   <div class="df">
     <div class="spacer"></div>
@@ -941,6 +955,14 @@ function hms(sec) {
   const p = (n) => String(n).padStart(2, '0');
   return h ? h + ':' + p(m) + ':' + p(s) : m + ':' + p(s);
 }
+// 1st, 2nd, 3rd, 4th. The teens are the exception every naive version gets
+// wrong: 11th and 13th, not 11st and 13rd.
+function ordinal(n) {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return n + 'th';
+  return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+}
+
 function mins(sec) {
   sec = Math.max(0, Math.round(sec || 0));
   const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
@@ -1057,18 +1079,16 @@ bootWatch();
 
 let navSeeded = false;
 
+// Fetching and drawing are two different things that fail in two different ways,
+// and they used to share one catch. Reaching the server was the only failure it
+// really considered: if drawing threw once S had been set, the catch looked at
+// `if (!S)`, found it false, and did nothing whatsoever — leaving an empty page,
+// no message, and nothing in the console to say why. A blank screen is the one
+// state that cannot explain itself, so neither half is allowed to end there.
 async function refresh() {
+  let next;
   try {
-    S = await api('/api/state');
-    bootDone();
-    // Two entries: a floor that Back can never step off, and the view you
-    // actually started on sitting above it.
-    if (!navSeeded) {
-      history.replaceState({ nav: true, root: true }, '');
-      history.pushState(navState(), '');
-      navSeeded = true;
-    }
-    paint();
+    next = await api('/api/state');
   } catch (e) {
     // Nothing has ever loaded and the request failed: say so, rather than
     // leaving a bar spinning over an app that is never going to arrive.
@@ -1082,7 +1102,46 @@ async function refresh() {
           'this page. ' + (e && e.message ? '(' + e.message + ')' : '');
       }
     }
+    return;                        // a poll that failed; the next one may not
   }
+
+  S = next;
+  bootDone();
+  // Two entries: a floor that Back can never step off, and the view you
+  // actually started on sitting above it.
+  if (!navSeeded) {
+    history.replaceState({ nav: true, root: true }, '');
+    history.pushState(navState(), '');
+    navSeeded = true;
+  }
+
+  try {
+    paint();
+  } catch (e) {
+    console.error('NAVFLIX could not draw the page', e);
+    showRenderError(e);
+  }
+}
+
+// The page could not be drawn. Say what happened and offer the two things that
+// actually help — reloading, and going to the Library, since the fault is
+// usually in whatever one collection is on the billboard.
+function showRenderError(e) {
+  const app = $('#app');
+  if (!app) return;
+  app.innerHTML =
+    '<div class="boot"><div>' +
+    '<div class="msg">Something went wrong drawing this page</div>' +
+    '<div class="dwhy">Your collections and progress are safe — this is the page, not your ' +
+    'library. Reloading usually clears it. If it comes back, the Library is a simpler ' +
+    'screen and will normally still open.</div>' +
+    '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">' +
+    '<button class="btn btn-red" onclick="location.reload()">Reload</button>' +
+    '<button class="btn btn-ghost" onclick="lastSig=\'\';view=\'library\';try{paint()}catch(x){}">' +
+    'Open the Library</button></div>' +
+    '<pre style="margin-top:18px;color:var(--muted);font-size:12px;white-space:pre-wrap;' +
+    'text-align:left;max-width:560px">' + esc(String((e && e.stack) || e || '')) + '</pre>' +
+    '</div></div>';
 }
 
 // Full repaints destroy scroll position and hover, so only rebuild when the
@@ -1447,7 +1506,10 @@ function renderLibrary() {
     let sub;
     if (c.missing) sub = 'Folder not found';
     else if (!c.total) sub = 'Nothing playable in here';
-    else if (c.done >= c.total) sub = 'Finished — all ' + c.total + ' watched';
+    else if (c.done >= c.total) {
+      sub = 'Finished — all ' + c.total + ' watched';
+      if (c.timesWatched > 1) sub += ' \u00b7 ' + c.timesWatched + ' times';
+    }
     else sub = 'Next: ' + esc(c.currentTitle || '—');
 
     h += '<div class="libcard" data-id="' + c.id + '">' +
@@ -2124,7 +2186,17 @@ const GUIDE = [
     ['Living on a portable drive', 'Collections on the same disk as the app are remembered relative to it, so the drive can be one letter on Windows and a mount point on Linux without repointing anything. Separators are stored the same way on both, and VLC is remembered per platform.'],
     ['Carrying Node and VLC too', 'NAVFLIX prefers a Node or VLC sitting in its own <code>runtime/</code> folder over anything installed, so the drive can run on a PC with neither. Windows can be fully self-contained. Linux cannot: VideoLAN publish no Linux build, so VLC there comes from the package manager (<code>sudo apt install vlc</code>).'],
     ['Making the move', 'Run NAVFLIX once where it is now — it converts the state file and keeps a backup beside it, and renames cached artwork to match so nothing needs fetching again — then copy the whole folder across. Media left on an internal drive keeps an absolute path, which is right, since it is not coming with you. Both machines still need Node and VLC.'],
-    ['Starting over', 'Settings → <b>Erase this collection\'s progress</b> resets one and leaves the rest alone.'],
+    ['Watching it again', 'Settings → <b>Start it over</b> puts every episode back to not started, and the ' +
+      'finished screen offers the same thing as <b>Watch it again</b>. Everything already read and fetched is ' +
+      'kept, so nothing has to be downloaded twice. <b>Mark everything watched</b> sits beside it, for a show ' +
+      'you had already seen before NAVFLIX met it.'],
+    ['How many times through', 'Each time a folder becomes complete the count goes up, however you got there — ' +
+      'watching the last episode, ticking a season, or marking the lot. The finished screen then reads ' +
+      '<i>3rd time through</i>, and the Library card says <i>3 times</i>. Folders seen once say nothing, since ' +
+      'that is the ordinary case. Starting over does not reset the count; that is rather the point of it.'],
+    ['Starting over completely', 'Settings → <b>Erase this collection\'s progress</b> forgets the folder entirely, ' +
+      'including its resolutions, cast, subtitle offsets and watch log — all of which has to be read and fetched ' +
+      'again. For a rewatch you want <b>Start it over</b> instead. Other collections are untouched either way.'],
   ]],
 
   ['fix', 'When something looks wrong', [
@@ -2380,8 +2452,10 @@ function render() {
   /* ---- billboard ---- */
   if (!hero) {
     html += '<div class="blank"><h2>&#127942; ' + esc(A.name) + ' complete</h2>' +
-      '<p>All ' + A.queue.length + ' ' + units + ' watched. Erase this collection\u2019s progress in Settings ' +
-      'to run it again &mdash; your other collections stay untouched.</p></div>';
+      '<p>All ' + A.queue.length + ' ' + units + ' watched' +
+      (A.timesWatched > 1 ? ' &middot; ' + ordinal(A.timesWatched) + ' time through' : '') +
+      '.</p>' +
+      '<button class="btn btn-red" onclick="startOver()">&#8635;&nbsp; Watch it again</button></div>';
   } else {
     const pos = P ? P.time : hero.position;
     const dur = P ? P.length : hero.duration;
@@ -2932,6 +3006,13 @@ async function markSeason(season, done) {
   } catch (e) { toast(e.message); }
 }
 
+// The same thing the Settings button does, put where you actually notice you
+// have finished: on the screen that tells you so.
+async function startOver() {
+  const el = $('#btnStartOver');
+  if (el) return el.onclick();
+}
+
 async function mark(index, opts) {
   try { S = await post('/api/mark', Object.assign({ index: index }, opts)); lastSig = ''; paint(); }
   catch (e) { toast(e.message); }
@@ -3375,6 +3456,44 @@ $('#btnResetDay').onclick = async () => {
   paint();
   toast('Today\u2019s timer is back to zero.');
 };
+$('#btnMarkAll').onclick = async () => {
+  if (!S.active) return;
+  const total = S.active.total || 0;
+  const sure = await uiConfirm({
+    title: 'Mark all of "' + S.active.name + '" watched?',
+    message: 'All ' + total + (total === 1 ? ' title' : ' titles') + ' are marked as seen.\n\n' +
+      'Nothing is deleted, and you can put it all back with Start it over.',
+    confirmLabel: 'Mark them watched',
+  });
+  if (!sure) return;
+  try {
+    S = await post('/api/mark', { all: true, done: true });
+    dlgSettings.close();
+    lastSig = '';
+    paint();
+    toast(S.changed + (S.changed === 1 ? ' title' : ' titles') + ' marked watched.');
+  } catch (e) { toast(e.message); }
+};
+
+$('#btnStartOver').onclick = async () => {
+  if (!S.active) return;
+  const sure = await uiConfirm({
+    title: 'Watch "' + S.active.name + '" again?',
+    message: 'Every title goes back to not started, and the queue begins at the first one.\n\n' +
+      'Everything already read and fetched is kept \u2014 resolutions, cast, artwork, and any ' +
+      'subtitle offsets you tuned. Nothing has to be downloaded again.',
+    confirmLabel: 'Start it over',
+  });
+  if (!sure) return;
+  try {
+    S = await post('/api/mark', { all: true, done: false });
+    dlgSettings.close();
+    lastSig = '';
+    paint();
+    toast('Back to the beginning \u2014 ' + S.changed + ' ready to watch.');
+  } catch (e) { toast(e.message); }
+};
+
 $('#btnResetAll').onclick = async () => {
   if (!S.active) return;
   const sure = await uiConfirm({
