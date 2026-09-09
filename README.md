@@ -64,6 +64,26 @@ everything else counts as not watched, so the pair always adds up to the whole
 shelf; each button's count is what you would get by pressing it. Pressing the one
 already on turns it off.
 
+**All films** is the odd one out in that row, and sits apart from the rest. The
+others filter folders; this one throws the folders away and lists what is inside
+them — every film in the library on one screen, its shelf shown as a label rather
+than as the thing you are browsing. A folder is the right unit for a marathon and
+the wrong one for *what have I actually got*: a shelf called "Watched" tells you
+nothing about the hundred films in it, and a film you half-remember is somewhere
+among seventeen of them.
+
+The Watched / Not watched buttons, the search box and the order all carry over
+unchanged, so switching view does not also change what is filtered. Clicking a
+film opens its folder with that film on the billboard, exactly as a search result
+does. A–Z sorts on the first letter that is really part of the name, so a release
+prefix like `#` or `@WMR` does not pile every file that carries one at the top.
+
+Shows are deliberately left out. Flattening sixty of them would be three thousand
+rows nobody browses, and a season list is already the right shape for that — the
+search box still reaches every episode. The list is fetched when you first open
+it rather than riding along with everything else, since three hundred titles on
+every two-second refresh would be paid for constantly and looked at rarely.
+
 A **search box** sits beside them and narrows the grid as you type. All the
 counts follow the search, and **Esc** clears it.
 

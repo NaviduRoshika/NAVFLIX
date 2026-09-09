@@ -1860,6 +1860,41 @@ async function sweepTick() {
 
 setInterval(sweepTick, SWEEP_EVERY);
 
+// Every film in the library with its folder forgotten. A folder is the right
+// unit for a marathon and the wrong one for "what have I actually got" — a shelf
+// called "Watched" says nothing about the hundred films inside it, and a film you
+// half-remember is somewhere among seventeen shelves.
+//
+// Shows are deliberately left out. Flattening sixty of them would be three
+// thousand rows nobody browses, and the season lists are already the right shape
+// for that. Search still reaches every episode.
+function allFilms() {
+  const out = [];
+  for (const c of state.collections) {
+    try { if (!c.path || !fs.existsSync(c.path)) continue; } catch (e) { continue; }
+    if (seriesShape(c)) continue;
+
+    orderedFiles(c).forEach((f, i) => {
+      // Read the record without creating one — listing should not write.
+      const r = (c.progress && c.progress[f.rel]) || null;
+      out.push({
+        collectionId: c.id,
+        collection: c.name,
+        index: i,
+        rel: f.rel,
+        title: displayTitle(c, f.rel, false),
+        art: artUrl(c, f.rel, ''),
+        backdrop: artUrl(c, f.rel, 'bg'),
+        done: !!(r && r.done),
+        position: (r && r.position) || 0,
+        duration: (r && r.duration) || 0,
+        lastPlayed: (r && r.lastPlayed) || '',
+      });
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- search
 //
 // Finding a title across every folder at once. Deliberately not buildQueue: that
@@ -3135,6 +3170,13 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/search') {
       return json(res, 200, searchTitles(url.searchParams.get('q') || ''));
+    }
+
+    // Asked for when you open the film list, not folded into /api/state: three
+    // hundred titles on every two-second poll would be paid for constantly by
+    // everyone, to be looked at occasionally by one person.
+    if (p === '/api/films') {
+      return json(res, 200, { films: allFilms() });
     }
 
     if (p === '/api/details') {

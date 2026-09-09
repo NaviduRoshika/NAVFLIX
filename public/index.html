@@ -1216,6 +1216,12 @@ let libStatus = 'any';
 let libSort = (function () {
   try { return localStorage.getItem('navflix.libSort') || 'name'; } catch (e) { return 'name'; }
 })();
+// 'folders' is the Library as it has always been. 'films' throws the folders
+// away and lists what is inside them, which is the question you are asking when
+// you cannot remember which shelf a film is on.
+let libView = 'folders';
+let films = null;        // fetched once when first asked for, then reused
+let filmsAt = 0;
 let libQuery = '';   // the search box, for the same reason
 let libHits = null;  // { q, hits, total, folders } from /api/search
 let libHitTimer = null;
@@ -1239,6 +1245,7 @@ function searchInside() {
 
 function setLibFilter(f) {
   libFilter = f;
+  libView = 'folders';        // the kind filters are about folders, so show those
   renderLibrary();
 }
 
@@ -1268,6 +1275,27 @@ function sortLibrary(list) {
     return list.slice().sort((a, b) => left(b) - left(a) || byName(a, b));
   }
   return list;
+}
+
+// Films are not in /api/state, so the first look costs a request. Kept for a
+// minute: long enough that flicking between the two views is instant, short
+// enough that a fetched poster or a finished film shows up without a reload.
+const FILMS_TTL = 60000;
+
+async function setLibView(v) {
+  libView = v;
+  renderLibrary();                                   // switch the view at once
+  if (v !== 'films') return;
+  if (films && Date.now() - filmsAt < FILMS_TTL) return;
+  try {
+    const got = await api('/api/films');
+    films = got.films || [];
+    filmsAt = Date.now();
+  } catch (e) {
+    films = [];                                      // an empty list says so
+    filmsAt = 0;
+  }
+  if (libView === 'films') renderLibrary();
 }
 
 function setLibStatus(v) {
@@ -1404,6 +1432,75 @@ function renderCoverage(every) {
   return h + '</div>';
 }
 
+// The same Watched / Not watched chips, the same search box and the same order
+// as the folder grid, applied to films instead of shelves. Sharing the controls
+// is the point: switching view should not also change what is filtered.
+function renderFilmGrid(q) {
+  if (!films) return '<div class="libempty">Reading your films\u2026</div>';
+  if (!films.length) {
+    return '<div class="libempty">No film shelves are reachable. ' +
+      'Folders that look like TV shows are not listed here \u2014 their episodes live in ' +
+      'the show itself.</div>';
+  }
+
+  let list = films.slice();
+  if (libStatus !== 'any') list = list.filter((m) => (libStatus === 'done' ? m.done : !m.done));
+  if (q) {
+    // The filename matches too, because a release name carries the year and the
+    // original title, which is often the half you remember.
+    list = list.filter((m) => (m.title + ' ' + m.rel + ' ' + m.collection).toLowerCase().indexOf(q) !== -1);
+  }
+
+  // Sorted on the first letter that is actually part of the name. Release
+  // prefixes like '#' or '@WMR' are not, and letting them count piles every
+  // file that carries one at the top of the alphabet.
+  const key = (m) => m.title.replace(/^[^\p{L}\p{N}]+/u, '') || m.title;
+  const byName = (a, b) => key(a).localeCompare(key(b), undefined, { numeric: true, sensitivity: 'base' });
+  if (libSort === 'name') list.sort(byName);
+  else if (libSort === 'recent') {
+    list.sort((a, b) => ((a.lastPlayed || '') === (b.lastPlayed || '')
+      ? byName(a, b) : ((a.lastPlayed || '') < (b.lastPlayed || '') ? 1 : -1)));
+  } else if (libSort === 'todo') {
+    // Unwatched first, and among those the ones with most of the film left.
+    const left = (m) => (m.done ? -1 : (m.duration > 0 ? m.duration - m.position : 0));
+    list.sort((a, b) => left(b) - left(a) || byName(a, b));
+  }
+
+  let out = '<p class="libintro">' +
+    list.length.toLocaleString() + ' film' + (list.length === 1 ? '' : 's') +
+    (list.length === films.length ? '' : ' of ' + films.length.toLocaleString()) +
+    ' &middot; every shelf at once</p>';
+
+  if (!list.length) {
+    return out + '<div class="libempty">' + (q
+      ? 'No film is called \u201c' + esc(libQuery.trim()) + '\u201d.'
+      : 'No film matches that.') + '</div>';
+  }
+
+  out += '<div class="libgrid">';
+  list.forEach((m) => {
+    const img = m.art || m.backdrop;
+    const pct = m.duration > 0 ? Math.min(100, (m.position / m.duration) * 100) : 0;
+    let state = 'Not started';
+    if (m.done) state = 'Watched';
+    else if (m.position > 0 && m.duration > 0) state = mins(m.duration - m.position) + ' left';
+    else if (m.duration > 0) state = mins(m.duration);
+
+    out += '<div class="libcard" data-film="' + m.collectionId + '" data-i="' + m.index + '">' +
+      '<div class="libart" style="' +
+        (img ? "background-image:url('" + img + "')" : 'background-image:' + fakeArt(m.title)) + '">' +
+        '<div class="libscrim"></div>' +
+        '<div class="libbadge">' + esc(m.collection) + '</div>' +
+        (m.done ? '<div class="libnow" style="background:rgba(0,0,0,.6)">\u2713 watched</div>' : '') +
+      '</div>' +
+      '<div class="libname">' + esc(m.title) + '</div>' +
+      '<div class="libsub">' + state + '</div>' +
+      '<div class="libbar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+    '</div>';
+  });
+  return out + '</div>';
+}
+
 function renderLibrary() {
   const keepY = scrollY;     // a poll refresh must not jump you back to the top
   // The page is rebuilt on every keystroke and on every poll, so a search box
@@ -1434,6 +1531,10 @@ function renderLibrary() {
   // showing a blank page.
   if (!(buckets[libFilter] || []).length) libFilter = 'all';
 
+  // Straight off the collection cards, so the chip can show a number before the
+  // list behind it has ever been fetched.
+  const filmTotal = every.reduce((t, c) => t + (c.series || c.missing ? 0 : (c.total || 0)), 0);
+
   const forStatus = all.filter(byType);
   const doneCount = forStatus.filter(libFinished).length;
   const todoCount = forStatus.length - doneCount;
@@ -1441,10 +1542,15 @@ function renderLibrary() {
 
   const list = sortLibrary((buckets[libFilter] || forType).filter(byStatus));
 
+  // The line under the title counts folders, which is wrong once the view is
+  // showing films. The film list writes its own line — it is the only one that
+  // knows how many survived the filters — so this one stands down rather than
+  // leaving two counts of different things stacked on top of each other.
   let h = '<div class="libwrap"><h1 class="libtitle">Your library</h1>' +
-    '<p class="libintro">' + (q
-      ? all.length + ' of ' + every.length + ' folders match'
-      : every.length + ' folder' + (every.length === 1 ? '' : 's') + ' &middot; pick one to carry on') + '</p>';
+    (libView === 'films' ? '' :
+      '<p class="libintro">' + (q
+        ? all.length + ' of ' + every.length + ' folders match'
+        : every.length + ' folder' + (every.length === 1 ? '' : 's') + ' &middot; pick one to carry on') + '</p>');
 
   // Always shown once there is more than one folder. Hiding it when a bucket
   // happened to be empty just meant hunting for a control that was not there.
@@ -1458,6 +1564,11 @@ function renderLibrary() {
           (f[2] ? '' : ' disabled') + '>' + f[1] +
           '<span class="n">' + f[2] + '</span></button>';
       }).join('') +
+      '<span class="sep"></span>' +
+      // Its own group, because it does not filter the folders — it replaces them
+      // with their contents, and its count is films rather than shelves.
+      '<button class="chip' + (libView === 'films' ? ' on' : '') + '" data-view="films">' +
+      'All films<span class="n">' + filmTotal + '</span></button>' +
       '<span class="sep"></span>' +
       [['done', 'Watched', doneCount], ['todo', 'Not watched', todoCount]].map((f) => {
         const cls = 'chip' + (libStatus === f[0] ? ' on' : '') + (f[2] ? '' : ' empty');
@@ -1486,15 +1597,28 @@ function renderLibrary() {
       (bg.left ? ' &middot; ' + bg.left + ' to go' : '') + '</div>';
   }
 
-  // Only on the plain view: filtered or searched, the row would be answering a
-  // question you are no longer asking.
-  if (!q && libFilter === 'all' && libStatus === 'any') h += renderContinue();
+  // Only on the plain view: filtered, searched, or looking at films rather than
+  // folders, the row would be answering a question you are no longer asking.
+  if (!q && libView === 'folders' && libFilter === 'all' && libStatus === 'any') {
+    h += renderContinue();
+  }
 
   // At the foot, and only on the unfiltered view: it describes the whole
   // library, so showing it under a filtered subset would be answering a
   // different question than the one on screen.
   const covHtml = (!q && libFilter === 'all' && libStatus === 'any')
     ? renderCoverage(every) : '';
+
+  // The film list replaces the folder grid outright rather than sitting under
+  // it: they answer the same question at two different scales, and showing both
+  // makes you read the page twice to find out which one you are looking at.
+  if (libView === 'films') {
+    h += renderFilmGrid(q) + '</div>';
+    $('#app').innerHTML = h;
+    scrollTo({ top: keepY, behavior: 'instant' });
+    wireLibrary(typing, caret);   // or the search box loses focus per keystroke
+    return;
+  }
 
   h += '<div class="libgrid">';
 
@@ -1578,9 +1702,21 @@ function renderLibrary() {
   h += '</div>';
   $('#app').innerHTML = h;
   scrollTo({ top: keepY, behavior: 'instant' });
+  wireLibrary(typing, caret);
+}
 
+// Pulled out of renderLibrary because the film list leaves early and needs the
+// same handlers. The two arguments are the only things it cannot work out for
+// itself: whether the search box had focus before the rebuild, and where the
+// caret was, so typing survives a repaint.
+function wireLibrary(typing, caret) {
   document.querySelectorAll('.libcard[data-id]').forEach((el) => {
     el.onclick = () => select(el.dataset.id);
+  });
+  // A film card opens its folder with that film on the billboard, exactly as a
+  // search result does.
+  document.querySelectorAll('.libcard[data-film]').forEach((el) => {
+    el.onclick = () => openHit(el.dataset.film, Number(el.dataset.i));
   });
   document.querySelectorAll('[data-cov]').forEach((el) => {
     el.onclick = () => select(el.dataset.cov);
@@ -1593,6 +1729,9 @@ function renderLibrary() {
   });
   document.querySelectorAll('.chip[data-status]').forEach((el) => {
     el.onclick = () => setLibStatus(el.dataset.status);
+  });
+  document.querySelectorAll('.chip[data-view]').forEach((el) => {
+    el.onclick = () => setLibView(libView === el.dataset.view ? 'folders' : el.dataset.view);
   });
   const sortSel = $('#libSort');
   if (sortSel) sortSel.onchange = () => setLibSort(sortSel.value);
@@ -2186,6 +2325,12 @@ const GUIDE = [
     ['Living on a portable drive', 'Collections on the same disk as the app are remembered relative to it, so the drive can be one letter on Windows and a mount point on Linux without repointing anything. Separators are stored the same way on both, and VLC is remembered per platform.'],
     ['Carrying Node and VLC too', 'NAVFLIX prefers a Node or VLC sitting in its own <code>runtime/</code> folder over anything installed, so the drive can run on a PC with neither. Windows can be fully self-contained. Linux cannot: VideoLAN publish no Linux build, so VLC there comes from the package manager (<code>sudo apt install vlc</code>).'],
     ['Making the move', 'Run NAVFLIX once where it is now — it converts the state file and keeps a backup beside it, and renames cached artwork to match so nothing needs fetching again — then copy the whole folder across. Media left on an internal drive keeps an absolute path, which is right, since it is not coming with you. Both machines still need Node and VLC.'],
+    ['All films at once', 'The Library shows folders, which is the right unit for a marathon and the wrong ' +
+      'one for <i>what have I actually got</i>. <b>All films</b> sets the folders aside and lists every film in ' +
+      'the library on one screen, its shelf shown as a label. Watched / Not watched, the search box and the ' +
+      'order all still apply, and clicking a film opens its folder with that film on the billboard. Shows are ' +
+      'left out on purpose — sixty of them flattened would be three thousand rows, and the search box already ' +
+      'reaches every episode.'],
     ['Watching it again', 'Settings → <b>Start it over</b> puts every episode back to not started, and the ' +
       'finished screen offers the same thing as <b>Watch it again</b>. Everything already read and fetched is ' +
       'kept, so nothing has to be downloaded twice. <b>Mark everything watched</b> sits beside it, for a show ' +
