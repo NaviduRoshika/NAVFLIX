@@ -701,9 +701,23 @@
      it, the text column was squeezed to a sixty-pixel ribbon and the path broken
      a character at a time. The name and details take the row; the controls sit
      underneath, which also lines them up down the dialog. */
+  .msearch {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 22px; border-bottom: 1px solid var(--line);
+  }
+  .msearch input { flex: 1; padding: 8px 12px; font-size: 13.5px; }
+  .msearch .n { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .mrow {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  /* Where the list lands when you open it: the folder you were already looking
+     at, marked so it is obvious that is why the scroll stopped there. */
+  .mrow.here > .t b::after {
+    content: 'open now'; margin-left: 9px; font-size: 10.5px; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+    background: rgba(255,255,255,.08); border-radius: 4px; padding: 2px 7px;
+    vertical-align: 1px;
   }
   .mrow:last-child { border: 0; }
   /* A select does not inherit .mini's look the way a button does, so it is
@@ -836,6 +850,12 @@
 
 <dialog id="dlgManage">
   <div class="dh">Collections</div>
+  <!-- Outside the scrolling body on purpose: a search box that scrolls away is
+       no use in the list it is meant to search. -->
+  <div class="msearch">
+    <input type="text" id="manageSearch" placeholder="Find a folder…">
+    <span class="n" id="manageCount"></span>
+  </div>
   <div class="db" id="manageBody"></div>
   <div class="df">
     <button class="mini" id="btnAddFromManage">+ Add collection</button>
@@ -3448,13 +3468,66 @@ $('#btnUseFolder').onclick = async () => {
 };
 
 /* ---------------------------------------------------------------- manage */
-$('#btnManage').onclick = () => { renderManage(); dlgManage.showModal(); };
+$('#btnManage').onclick = () => {
+  // A fresh search every time. Reopening the dialog to find a different folder
+  // and being shown yesterday's filtered list is a small mystery you would have
+  // to solve before you could start.
+  manageQuery = '';
+  $('#manageSearch').value = '';
+  renderManage();
+  dlgManage.showModal();
+  // Land on the folder you already have open, which is nearly always the one
+  // you came here about. Only on opening: a rename or a tag edit re-renders the
+  // list, and yanking the scroll back mid-edit would be maddening.
+  scrollManageToCurrent();
+};
+
+function scrollManageToCurrent() {
+  const body = $('#manageBody');
+  const row = body && body.querySelector('.mrow.here');
+  if (!row) return;
+  // showModal() lays the dialog out synchronously, so the row can be measured
+  // and the body scrolled straight away. Deliberately not requestAnimationFrame:
+  // a page that is not being painted — a background tab, a hidden window —
+  // never runs the callback, and the list would silently open at the top.
+  body.scrollTop = Math.max(0, row.offsetTop - (body.clientHeight - row.offsetHeight) / 2);
+}
 $('#btnAddFromManage').onclick = () => { dlgManage.close(); openAdd(); };
 
+// Typed into the Find box above the list, kept while the dialog is open so a
+// rename or a tag edit does not throw away what you were searching for.
+let manageQuery = '';
+
 function renderManage() {
-  if (!S.collections.length) { $('#manageBody').innerHTML = '<div class="muted">No collections yet.</div>'; return; }
-  $('#manageBody').innerHTML = S.collections.map((c) =>
-    '<div class="mrow"><div class="t"><b>' + esc(c.name) + (c.missing ? ' <span class="warn">&#9888;</span>' : '') +
+  if (!S.collections.length) {
+    $('#manageBody').innerHTML = '<div class="muted">No collections yet.</div>';
+    $('#manageCount').textContent = '';
+    return;
+  }
+
+  // A–Z rather than the order they were added. Ninety rows in insertion order
+  // means the only way to find one is to read all of them, and by then you have
+  // scrolled past it twice. The name is what you are looking for, so it is what
+  // the list is arranged by — leading punctuation ignored, so a folder called
+  // "#Comedy" sits under C where you would look for it.
+  const key = (c) => c.name.replace(/^[^\p{L}\p{N}]+/u, '') || c.name;
+  const q = manageQuery.trim().toLowerCase();
+  const rows = S.collections
+    .filter((c) => !q || (c.name + ' ' + c.path).toLowerCase().indexOf(q) !== -1)
+    .sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true, sensitivity: 'base' }));
+
+  $('#manageCount').textContent = q
+    ? rows.length + ' of ' + S.collections.length
+    : S.collections.length + ' folders';
+
+  if (!rows.length) {
+    $('#manageBody').innerHTML = '<div class="muted">No folder matches “' + esc(manageQuery.trim()) + '”.</div>';
+    return;
+  }
+
+  $('#manageBody').innerHTML = rows.map((c) =>
+    '<div class="mrow' + (c.id === S.activeId ? ' here' : '') + '" data-row="' + c.id + '">' +
+    '<div class="t"><b>' + esc(c.name) + (c.missing ? ' <span class="warn">&#9888;</span>' : '') +
     '</b><span>' + esc(c.path) + ' &middot; ' + c.done + '/' + c.total + ' films &middot; ' + c.episodeMinutes + ' min episodes' +
     // Say which way it was decided, so "Auto" is not a mystery about what it
     // actually chose.
@@ -3483,6 +3556,25 @@ function renderManage() {
       'image — a new season does not need this">Re-identify</button>') +
     '<button class="mini danger" data-act="remove" data-id="' + c.id + '">Remove</button></div>'
   ).join('');
+
+  const find = $('#manageSearch');
+  if (find && !find.dataset.wired) {
+    // Wired once rather than on every render: the input lives outside the body
+    // that gets rebuilt, so re-binding it each time would also cost the caret.
+    find.dataset.wired = '1';
+    find.oninput = () => { manageQuery = find.value; renderManage(); };
+    find.onkeydown = (e) => {
+      if (e.key === 'Escape' && find.value) {
+        // Clear the search first; a second Escape closes the dialog, which is
+        // what Escape does everywhere else.
+        e.preventDefault();
+        e.stopPropagation();
+        find.value = '';
+        manageQuery = '';
+        renderManage();
+      }
+    };
+  }
 
   $('#manageBody').querySelectorAll('select.mshape').forEach((sel) => {
     sel.onchange = async () => {

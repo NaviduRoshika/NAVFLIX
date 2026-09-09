@@ -154,9 +154,19 @@ separates the two cleanly — on a real library, 99-100% of a show's filenames r
 as episodes against 0% of a film folder's. So a series on an unplugged external
 drive is still filed as a series, with its season count intact.
 
-Under **Manage** you can rename a collection, repoint it at a moved folder
-(progress is keyed on filenames, so it survives the move), or remove it — removing
-forgets its progress and never touches your video files.
+Under **Manage** you can rename a collection, tag it, tell it whether it is films
+or a show, repoint it at a moved folder (progress is keyed on filenames, so it
+survives the move), or remove it — removing forgets its progress and never touches
+your video files.
+
+Ninety folders is a long list, so it does three things to keep it findable. It
+**opens on the folder you already have open**, marked *open now*, since that is
+nearly always the one you came about. It is sorted **A–Z** rather than by the
+order folders were added — leading punctuation ignored, so `#Comedy` sits under
+C. And a **Find a folder** box at the top matches the name or the path, with a
+count beside it; **Esc** clears the search, and a second Esc closes the dialog.
+Your search survives a rename, a tag edit or a shape change, so a run of edits
+does not put you back at the top of ninety rows each time.
 
 ## The phone remote
 
