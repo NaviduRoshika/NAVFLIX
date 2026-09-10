@@ -733,8 +733,34 @@
   .mrow .t span { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   h3.sec { font-size: 12px; text-transform: uppercase; letter-spacing: 1.6px; color: var(--muted); margin: 0 0 12px; }
 
+  /* ---- settings: section links and sections ----
+     The links sit outside .db, so they stay put while the settings scroll under
+     them. They wrap rather than scroll sideways: a link you have to scroll to
+     find is not much of a shortcut. */
+  .snav {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 11px 22px 12px; border-bottom: 1px solid var(--line);
+  }
+  .snav button {
+    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    background: transparent; border: 1px solid var(--line); border-radius: 99px;
+    padding: 4px 11px; cursor: pointer;
+  }
+  .snav button:hover { color: var(--text); border-color: rgba(255,255,255,.35); }
+  .snav button.on { color: #fff; background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.3); }
+  .snav button.warn { color: #ff9b90; }
+  .snav button:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+  /* Border on the top of every section after the first, so whichever section is
+     hidden this visit, the dividers still fall between the ones you can see. */
+  .sgrp + .sgrp { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 20px; }
+  .scoll { font-size: 18px; font-weight: 700; margin: -4px 0 16px; overflow-wrap: anywhere; }
+  .snote { font-size: 13px; margin: 0 0 18px; }
+
   /* Manage carries more per row than any other dialog, so it gets more room. */
   #dlgManage { width: min(720px, 94vw); }
+  /* Wide enough for the seven whole-app section links on one row; at 600px the
+     last one wrapped onto a line of its own. */
+  #dlgSettings { width: min(680px, 94vw); }
 
   /* ---- subtitle timing ---- */
   #dlgDrift, #dlgWhy { width: min(560px, 93vw); }
@@ -866,24 +892,47 @@
 
 <dialog id="dlgSettings">
   <div class="dh">Settings</div>
-  <div class="db">
-    <label class="chk" style="margin-bottom:14px">
-      <input type="checkbox" id="setFullMode">
-      <span id="fullModeLabel">Whole-film mode: play straight to the end</span>
-    </label>
-    <p class="muted" style="font-size:13px;margin:-8px 0 18px">
-      Off: the film is served in episode-sized sittings and stops on time, and you
-      can start the next one straight away. On: it plays to the end and the part
-      strip disappears. Set per collection.
-    </p>
-    <label class="f">
-      <span id="minutesLabel">Episode length (minutes per sitting)</span>
-      <input type="number" id="setMinutes" min="5" max="600" step="5">
-    </label>
-    <p class="muted" style="font-size:13px;margin:-8px 0 20px">
-      How long one sitting runs before VLC stops itself. There is no daily limit:
-      press Play again for another episode whenever you feel like it.
-    </p>
+  <!-- Built from the sections below each time the dialog opens, so a section
+       hidden for this visit never leaves a link pointing at nothing. -->
+  <nav class="snav" id="setNav" aria-label="Settings sections"></nav>
+  <div class="db" id="setBody">
+    <p class="muted snote" id="setScopeNote" hidden></p>
+
+    <!-- Only when Settings is opened from a folder. From the Library or the
+         Guide there is no folder you chose, and guessing the last one you had
+         open is how "Erase progress" ends up aimed at the wrong show. -->
+    <section class="sgrp" id="sColl" data-nav="This collection">
+      <h3 class="sec">This collection</h3>
+      <div class="scoll" id="setCollName"></div>
+      <label class="chk" style="margin-bottom:14px">
+        <input type="checkbox" id="setFullMode">
+        <span>Whole-film mode: play straight to the end</span>
+      </label>
+      <p class="muted" style="font-size:13px;margin:-8px 0 18px">
+        Off: the film is served in episode-sized sittings and stops on time, and you
+        can start the next one straight away. On: it plays to the end and the part
+        strip disappears. Only this collection is affected.
+      </p>
+      <label class="f">
+        <span>Episode length (minutes per sitting)</span>
+        <input type="number" id="setMinutes" min="5" max="600" step="5">
+      </label>
+      <p class="muted" style="font-size:13px;margin:-8px 0 20px">
+        How long one sitting runs before VLC stops itself. There is no daily limit:
+        press Play again for another episode whenever you feel like it.
+      </p>
+      <button class="mini" id="btnMarkAll">Mark everything watched</button>
+      <button class="mini" id="btnStartOver">Start it over</button>
+      <p class="muted" style="font-size:13px;margin:8px 0 0">
+        <b>Mark everything watched</b> is for a show you had already seen before
+        NAVFLIX met it. <b>Start it over</b> puts every episode back to unseen for a
+        rewatch, and keeps what has been read and fetched: resolutions, cast,
+        artwork and any subtitle offsets you tuned.
+      </p>
+    </section>
+
+    <section class="sgrp" id="sGeneral" data-nav="General">
+    <h3 class="sec">General</h3>
     <label class="f">
       <span>VLC location (applies to everything)</span>
       <input type="text" id="setVlc" placeholder="C:\Program Files\VideoLAN\VLC\vlc.exe">
@@ -894,7 +943,10 @@
       Turn this off if you launch NAVFLIX from its installed app icon, so starting
       the server does not also throw up a browser tab. Takes effect next start.
     </p>
-    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    </section>
+
+    <section class="sgrp" id="sSound" data-nav="Sound">
+    <h3 class="sec">Sound</h3>
     <label class="f">
       <span>Even out the volume</span>
       <select id="setEven">
@@ -910,7 +962,10 @@
       effects add together. This closes the gap: quiet parts up, loud parts down.
       Takes effect the next time something starts playing.
     </p>
-    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    </section>
+
+    <section class="sgrp" id="sBackground" data-nav="Background">
+    <h3 class="sec">Background work</h3>
     <label class="chk"><input type="checkbox" id="setBgScan"> Read file details in the background</label>
     <p class="muted" style="font-size:13px;margin:6px 0 12px">
       Works out resolution, codecs, audio and subtitle tracks and real running time
@@ -924,7 +979,10 @@
       handful of requests at a time. Turn it off if you would rather NAVFLIX only
       went online when you ask it to.
     </p>
-    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    </section>
+
+    <section class="sgrp" id="sArtwork" data-nav="Artwork">
+    <h3 class="sec">Artwork</h3>
     <label class="f">
       <span>TMDB API key (optional)</span>
       <input type="text" id="setTmdb" placeholder="Leave empty to use the keyless iTunes catalogue">
@@ -936,7 +994,9 @@
       which is IMDb-backed and covers mainstream films well. A free key from themoviedb.org improves
       coverage for obscure ones.
     </p>
-    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    </section>
+
+    <section class="sgrp" id="sRemote" data-nav="Phone remote">
     <h3 class="sec">Phone remote</h3>
     <label class="chk"><input type="checkbox" id="setRemote"> Let a phone on this network control playback</label>
     <p class="muted" style="font-size:13px;margin:6px 0 10px">
@@ -948,16 +1008,9 @@
     </p>
     <div id="remoteInfo" class="muted" style="font-size:13px;margin:0 0 10px"></div>
     <button class="mini" id="btnNewPin">New pairing code</button>
-    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
-    <h3 class="sec">The whole collection <span id="dzName" class="muted"></span></h3>
-    <button class="mini" id="btnMarkAll">Mark everything watched</button>
-    <button class="mini" id="btnStartOver">Start it over</button>
-    <p class="muted" style="font-size:13px;margin:8px 0 14px">
-      <b>Mark everything watched</b> is for a show you had already seen before
-      NAVFLIX met it. <b>Start it over</b> puts every episode back to unseen for a
-      rewatch, and keeps what has been read and fetched: resolutions, cast,
-      artwork and any subtitle offsets you tuned.
-    </p>
+    </section>
+
+    <section class="sgrp" id="sBackup" data-nav="Backup">
     <h3 class="sec">Backup</h3>
     <button class="mini" id="btnExport">Save a backup</button>
     <button class="mini" id="btnImport">Restore from a backup</button>
@@ -970,6 +1023,9 @@
       fetched again. Restoring replaces your progress, and writes what it replaced
       into <code>data/backups/</code> first.
     </p>
+    </section>
+
+    <section class="sgrp" id="sStorage" data-nav="Storage">
     <h3 class="sec">Storage</h3>
     <button class="mini" id="btnTidy">Look for leftovers</button>
     <p class="muted" style="font-size:13px;margin:8px 0 14px">
@@ -979,7 +1035,13 @@
       anything. A folder it cannot read is left completely alone, since an
       unplugged drive looks the same as a deleted one.
     </p>
-    <h3 class="sec">Danger zone</h3>
+    </section>
+
+    <!-- Folder-scoped like the first section, and hidden with it for the same
+         reason. Named in the heading because it sits a long scroll away from
+         the name at the top. -->
+    <section class="sgrp" id="sDanger" data-nav="Danger zone">
+    <h3 class="sec">Danger zone <span id="dzName" class="muted"></span></h3>
     <button class="mini" id="btnResetDay">Reset today's watched time</button>
     <button class="mini danger" id="btnResetAll">Erase this collection's progress</button>
     <p class="muted" style="font-size:13px;margin:8px 0 0">
@@ -987,6 +1049,7 @@
       (resolutions, tracks, cast and crew, subtitle offsets), all of which has to
       be read and fetched again. To watch it again, use <b>Start it over</b>.
     </p>
+    </section>
   </div>
   <div class="df">
     <div class="spacer"></div>
@@ -3767,14 +3830,38 @@ function renderManage() {
 }
 
 /* ---------------------------------------------------------------- settings */
-$('#btnSettings').onclick = () => {
-  const A = S.active;
-  $('#setMinutes').value = A ? A.episodeMinutes : 60;
-  $('#setMinutes').disabled = !A;
-  $('#minutesLabel').textContent = A
-    ? 'Episode length for "' + A.name + '" (minutes per sitting)'
-    : 'Episode length (minutes per sitting)';
-  $('#dzName').textContent = A ? '\u00b7 ' + A.name : '';
+// The folder this visit to Settings is about, or null. Settings used to read
+// S.active, which is simply the last folder opened, so from the Library it
+// quietly offered to erase whichever show you had looked at before. Only a
+// folder you are actually on counts now, and the id is fixed when the dialog
+// opens: the page refreshes every few seconds, and a phone switching folders in
+// the meantime must not move where Save or Erase lands.
+let setScope = null;
+let spyHold = false;       // true while a link click is scrolling for you
+
+function openSettings(jumpTo) {
+  const onFolder = view === 'collection' || view === 'details';
+  const A = onFolder ? S.active : null;
+  setScope = A ? A.id : null;
+
+  $('#sColl').hidden = !A;
+  $('#sDanger').hidden = !A;
+  const note = $('#setScopeNote');
+  note.hidden = !!A;
+  if (A) {
+    $('#setCollName').textContent = A.name;
+    $('#dzName').textContent = '\u00b7 ' + A.name;
+    $('#setFullMode').checked = !!A.fullMode;
+    $('#setMinutes').value = A.episodeMinutes;
+    $('#setMinutes').disabled = !!A.fullMode;
+  } else {
+    note.textContent = S.collections.length
+      ? 'You opened Settings from ' + (view === 'guide' ? 'the Guide' : 'the Library') +
+        ', so only settings for the whole app are here. For a folder\u2019s episode length, ' +
+        'whole-film mode or progress, open that folder and press Settings there.'
+      : 'Settings for a folder appear here once you have added one.';
+  }
+
   $('#setVlc').value = S.vlcPath;
   $('#setFull').checked = S.fullscreen;
   $('#setOpen').checked = S.openOnStart !== false;
@@ -3783,13 +3870,82 @@ $('#btnSettings').onclick = () => {
   $('#setBgFetch').checked = !!(S.background && S.background.fetch);
   renderRemoteInfo();
   $('#setTmdb').value = S.tmdbKey || '';
-  $('#setFullMode').checked = !!(A && A.fullMode);
-  $('#setMinutes').disabled = !A || !!A.fullMode;
-  $('#fullModeLabel').textContent = A
-    ? 'Whole-film mode for "' + A.name + '": play straight to the end'
-    : 'Whole-film mode: play straight to the end';
+
+  $('#setNav').innerHTML = settingsSections().map((s) =>
+    '<button type="button" data-to="' + s.id + '"' + (s.id === 'sDanger' ? ' class="warn"' : '') + '>' +
+    esc(s.dataset.nav) + '</button>').join('');
+
   dlgSettings.showModal();
+  $('#setBody').scrollTop = 0;
+  spyHold = false;
+  if (jumpTo && !$('#' + jumpTo).hidden) jumpSettings(jumpTo, false);
+  else spySettings();
+}
+
+function settingsSections() {
+  return Array.from(document.querySelectorAll('#setBody .sgrp')).filter((s) => !s.hidden);
+}
+
+function markSettingsNav(id) {
+  for (const b of document.querySelectorAll('#setNav button')) b.classList.toggle('on', b.dataset.to === id);
+}
+
+function jumpSettings(id, smooth) {
+  const body = $('#setBody');
+  const secs = settingsSections();
+  const sec = $('#' + id);
+  const top = sec === secs[0]
+    ? 0
+    : body.scrollTop + sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  // Held until you scroll yourself. Near the bottom the dialog cannot scroll far
+  // enough to bring a short section to the top, and without the hold the
+  // highlight would jump to the last section instead of the one you picked.
+  spyHold = true;
+  markSettingsNav(id);
+  const glide = smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  body.scrollTo({ top: top, behavior: glide ? 'smooth' : 'instant' });
+}
+
+// Lights the link for the section you are reading: the last one whose top has
+// reached the top of the list, or the last one outright once you hit the bottom.
+function spySettings() {
+  const body = $('#setBody');
+  const secs = settingsSections();
+  if (!secs.length) return;
+  const edge = body.getBoundingClientRect().top + 48;
+  let cur = secs[0];
+  for (const s of secs) {
+    if (s.getBoundingClientRect().top <= edge) cur = s;
+    else break;
+  }
+  if (body.scrollTop + body.clientHeight >= body.scrollHeight - 2) cur = secs[secs.length - 1];
+  markSettingsNav(cur.id);
+}
+
+$('#setNav').onclick = (e) => {
+  const b = e.target.closest('button[data-to]');
+  if (b) jumpSettings(b.dataset.to, true);
 };
+$('#setBody').addEventListener('scroll', () => { if (!spyHold) spySettings(); }, { passive: true });
+for (const ev of ['wheel', 'touchstart', 'mousedown', 'keydown']) {
+  $('#setBody').addEventListener(ev, () => { spyHold = false; }, { passive: true });
+}
+
+// The folder a whole-collection button acts on. Inside Settings that is the one
+// the dialog was opened for; if a phone has switched folders since, it refuses
+// rather than act on a folder other than the one named on screen. The finished
+// screen reuses Start it over with no dialog open, and means the folder on it.
+function scopedFolder() {
+  const A = S.active;
+  if (!dlgSettings.open) return A;
+  if (!A || A.id !== setScope) {
+    toast('The open folder changed. Close Settings and open it again.');
+    return null;
+  }
+  return A;
+}
+
+$('#btnSettings').onclick = () => openSettings();
 $('#setFullMode').onchange = () => { $('#setMinutes').disabled = $('#setFullMode').checked; };
 
 // The code and the address only ever come from the server when the dashboard
@@ -3888,7 +4044,7 @@ function renderQr() {
   if (cp) cp.onclick = () => copyText(r.addresses[0], $('#qrBody .v'));
 }
 
-$('#btnQrSettings').onclick = () => { dlgQr.close(); $('#btnSettings').click(); };
+$('#btnQrSettings').onclick = () => { dlgQr.close(); openSettings('sRemote'); };
 
 // Three attempts, most capable first. The last one does not copy anything but
 // leaves the text selected, so Ctrl+C finishes the job by hand.
@@ -3951,7 +4107,10 @@ $('#btnSaveSettings').onclick = async () => {
       backgroundFetch: $('#setBgFetch').checked,
       remoteEnabled: $('#setRemote').checked,
     };
-    if (S.active) {
+    // Folder settings only when Settings was opened on a folder, and sent with
+    // that folder's id so they cannot land on whichever one is active by now.
+    if (setScope) {
+      body.collectionId = setScope;
       body.episodeMinutes = Number($('#setMinutes').value);
       body.fullMode = $('#setFullMode').checked;
     }
@@ -4071,23 +4230,28 @@ $('#btnTidy').onclick = async () => {
 };
 
 $('#btnResetDay').onclick = async () => {
-  S = await post('/api/reset-day');
-  lastSig = '';
-  paint();
-  toast('Today\u2019s timer is back to zero.');
+  const A = scopedFolder();
+  if (!A) return;
+  try {
+    S = await post('/api/reset-day', { collectionId: A.id });
+    lastSig = '';
+    paint();
+    toast('Today\u2019s timer is back to zero.');
+  } catch (e) { toast(e.message); }
 };
 $('#btnMarkAll').onclick = async () => {
-  if (!S.active) return;
-  const total = S.active.total || 0;
+  const A = scopedFolder();
+  if (!A) return;
+  const total = A.total || 0;
   const sure = await uiConfirm({
-    title: 'Mark all of "' + S.active.name + '" watched?',
+    title: 'Mark all of "' + A.name + '" watched?',
     message: 'All ' + total + (total === 1 ? ' title' : ' titles') + ' are marked as seen.\n\n' +
       'Nothing is deleted, and you can put it all back with Start it over.',
     confirmLabel: 'Mark them watched',
   });
   if (!sure) return;
   try {
-    S = await post('/api/mark', { all: true, done: true });
+    S = await post('/api/mark', { collectionId: A.id, all: true, done: true });
     dlgSettings.close();
     lastSig = '';
     paint();
@@ -4096,9 +4260,10 @@ $('#btnMarkAll').onclick = async () => {
 };
 
 $('#btnStartOver').onclick = async () => {
-  if (!S.active) return;
+  const A = scopedFolder();
+  if (!A) return;
   const sure = await uiConfirm({
-    title: 'Watch "' + S.active.name + '" again?',
+    title: 'Watch "' + A.name + '" again?',
     message: 'Every title goes back to not started, and the queue begins at the first one.\n\n' +
       'Everything already read and fetched is kept: resolutions, cast, artwork, and any ' +
       'subtitle offsets you tuned. Nothing has to be downloaded again.',
@@ -4106,7 +4271,7 @@ $('#btnStartOver').onclick = async () => {
   });
   if (!sure) return;
   try {
-    S = await post('/api/mark', { all: true, done: false });
+    S = await post('/api/mark', { collectionId: A.id, all: true, done: false });
     dlgSettings.close();
     lastSig = '';
     paint();
@@ -4115,17 +4280,20 @@ $('#btnStartOver').onclick = async () => {
 };
 
 $('#btnResetAll').onclick = async () => {
-  if (!S.active) return;
+  const A = scopedFolder();
+  if (!A) return;
   const sure = await uiConfirm({
-    title: 'Erase progress for "' + S.active.name + '"?',
+    title: 'Erase progress for "' + A.name + '"?',
     message: 'It starts again from the first film.\nYour other collections are not affected.',
     confirmLabel: 'Erase',
   });
   if (!sure) return;
-  S = await post('/api/reset-all');
-  dlgSettings.close();
-  lastSig = '';
-  paint();
+  try {
+    S = await post('/api/reset-all', { collectionId: A.id });
+    dlgSettings.close();
+    lastSig = '';
+    paint();
+  } catch (e) { toast(e.message); }
 };
 
 addEventListener('scroll', () => { $('#nav').classList.toggle('solid', scrollY > 40); });
