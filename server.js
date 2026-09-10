@@ -3401,6 +3401,71 @@ const REMOTE_ALLOWED = new Set([
   '/api/vlc/pause', '/api/vlc/seek', '/api/vlc/volume', '/api/remote/unpair',
 ]);
 
+// ---- requests from other websites
+//
+// "Local" used to mean trusted, and a browser breaks that assumption: any page
+// open in any tab runs on this machine, so its requests arrive from 127.0.0.1
+// like the dashboard's own. Nothing stopped such a page from posting to
+// /api/settings to set the VLC path and then /api/play to run it. Two separate
+// attacks, two separate defences.
+//
+// DNS rebinding. A hostile site points its own domain at 127.0.0.1 after the page
+// loads, and from then on the browser treats this server as that site — reads
+// included. The one thing it cannot fake is the Host header, which still names
+// its domain. So a dotted hostname is refused unless it is an IP literal or a
+// .local name. Bare names — localhost, a machine name — cannot be registered on
+// the public internet, so they cannot be rebound, and they stay allowed.
+function hostnameOf(header) {
+  const h = String(header || '').trim().toLowerCase();
+  if (!h) return '';
+  if (h[0] === '[') { const end = h.indexOf(']'); return end > 0 ? h.slice(1, end) : ''; }
+  const colon = h.lastIndexOf(':');
+  return colon > -1 ? h.slice(0, colon) : h;
+}
+
+function trustedHost(req) {
+  const name = hostnameOf(req.headers.host);
+  if (!name) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;   // the LAN address the QR hands out
+  if (name.indexOf(':') !== -1) return true;                   // an IPv6 literal
+  if (name.indexOf('.') === -1) return true;                   // localhost, a machine name
+  if (/\.local$/.test(name)) return true;                     // mDNS, only resolvable at home
+  return false;
+}
+
+// Cross-site request forgery. The page cannot read the reply, but it does not
+// need to — the request alone does the damage. Three checks, any one of which
+// would stop it, because browsers differ in which headers they send:
+//
+//   Sec-Fetch-Site   Modern browsers say outright where a request came from.
+//                    Our own pages are always same-origin; "same-site" is
+//                    refused too, since another app on localhost:3000 is
+//                    exactly as foreign as one on the internet.
+//   Origin           Must name this same host and port.
+//   Content-Type     Must be application/json. A page may only send three
+//                    content types without asking permission first, and JSON
+//                    is not one of them — so the browser has to send a CORS
+//                    preflight, which this server never approves.
+//
+// A request carrying neither Origin nor Sec-Fetch-Site did not come from a web
+// page. Anything else on this machine able to send one already has the machine.
+function crossSiteReason(req) {
+  const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (site && site !== 'same-origin' && site !== 'none') return 'it came from another site';
+
+  if (req.headers.origin !== undefined) {
+    let origin;
+    try { origin = new URL(req.headers.origin); } catch (e) { return 'its origin is unreadable'; }
+    if (origin.host.toLowerCase() !== String(req.headers.host || '').toLowerCase()) {
+      return 'it came from another site';
+    }
+  }
+
+  const type = String(req.headers['content-type'] || '').toLowerCase();
+  if (!type.startsWith('application/json')) return 'it is not JSON';
+  return null;
+}
+
 function isLocal(req) {
   const a = req.socket.remoteAddress || '';
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
@@ -3448,6 +3513,16 @@ const server = http.createServer(async (req, res) => {
   const local = isLocal(req);
 
   try {
+    // Ahead of the local/remote split on purpose: both halves need it, and the
+    // hole this closes was precisely that local was taken to mean safe.
+    if (!trustedHost(req)) {
+      return json(res, 403, { error: 'Refused: that address is not this server.' });
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const why = crossSiteReason(req);
+      if (why) return json(res, 403, { error: 'Refused because ' + why + '.' });
+    }
+
     if (!local) {
       if (!state.remote.enabled) return json(res, 403, { error: 'The remote is switched off.' });
 

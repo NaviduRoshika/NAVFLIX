@@ -238,6 +238,28 @@ them all.
 This is a home network feature, not an internet one. There is no TLS, so do not
 port-forward it.
 
+### Other websites cannot drive it
+
+"From this machine" used to mean trusted, and a browser breaks that assumption.
+Any page open in any tab runs on this machine too, so its requests arrived from
+`127.0.0.1` exactly like the dashboard's own. Nothing stopped such a page from
+posting to `/api/settings` to set the VLC path, then to `/api/play` to run it —
+arbitrary code execution from a web page you happened to visit.
+
+Every request now passes two checks before anything else runs, local or remote:
+
+| Attack | How it works | What stops it |
+| --- | --- | --- |
+| **Cross-site request forgery** | A hostile page posts to `localhost:8787`. It cannot read the reply, but the request alone does the damage. | Anything that changes state must be same-origin (`Sec-Fetch-Site`), name this host in `Origin`, **and** be `application/json` — a type a page cannot send without a CORS preflight, which this server never approves. Browsers differ in which headers they send, so any one of the three is enough. |
+| **DNS rebinding** | A hostile site points its own domain at `127.0.0.1`, after which the browser treats this server as that site — reads included. | The `Host` header still names the hostile domain. A dotted hostname is refused unless it is an IP literal or a `.local` name. `localhost`, a bare machine name and the LAN address the QR code hands out all still work, because none can be registered on the public internet. |
+
+A request carrying neither `Origin` nor `Sec-Fetch-Site` did not come from a web
+page and is allowed — anything else on the machine able to send one already has
+the machine. Tested against 19 forged scenarios, including form posts,
+`Origin: null`, another app on `localhost:3000`, a CORS preflight, and a
+same-origin post under a rebound name; the dashboard and the phone remote are
+unaffected.
+
 ### If it will not start after turning the remote on
 
 Switching the remote on widens the bind from `127.0.0.1` to `0.0.0.0`, so the
