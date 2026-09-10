@@ -869,7 +869,7 @@
   <div class="db">
     <label class="chk" style="margin-bottom:14px">
       <input type="checkbox" id="setFullMode">
-      <span id="fullModeLabel">Whole-film mode — play straight to the end</span>
+      <span id="fullModeLabel">Whole-film mode: play straight to the end</span>
     </label>
     <p class="muted" style="font-size:13px;margin:-8px 0 18px">
       Off: the film is served in episode-sized sittings and stops on time, and you
@@ -898,16 +898,16 @@
     <label class="f">
       <span>Even out the volume</span>
       <select id="setEven">
-        <option value="off">Off — as the film was mixed</option>
-        <option value="gentle">Gentle — lift the dialogue a little</option>
-        <option value="strong">Strong — night mode, nothing loud</option>
+        <option value="off">Off: as the film was mixed</option>
+        <option value="gentle">Gentle: lift the dialogue a little</option>
+        <option value="strong">Strong: night mode, nothing loud</option>
       </select>
     </label>
     <p class="muted" style="font-size:13px;margin:-8px 0 4px">
       Films are mixed for a silent cinema, so dialogue sits low and explosions sit
       high. On a TV it is worse still: nearly all the dialogue lives in the centre
       channel, and folding six channels into two turns that channel down while the
-      effects add together. This closes the gap — quiet parts up, loud parts down.
+      effects add together. This closes the gap: quiet parts up, loud parts down.
       Takes effect the next time something starts playing.
     </p>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
@@ -915,13 +915,13 @@
     <p class="muted" style="font-size:13px;margin:6px 0 12px">
       Works out resolution, codecs, audio and subtitle tracks and real running time
       for files that have not been looked at yet, a few at a time. Your own disk
-      only — nothing leaves the machine. It stops the moment you press play.
+      only, and nothing leaves the machine. It stops the moment you press play.
     </p>
     <label class="chk"><input type="checkbox" id="setBgFetch"> Fetch artwork in the background</label>
     <p class="muted" style="font-size:13px;margin:6px 0 4px">
       Collects the posters and episode stills still missing, so you do not have to
       press <b>Get artwork</b> once per folder. <b>This one uses the network</b>, a
-      handful of requests at a time — turn it off if you would rather NAVFLIX only
+      handful of requests at a time. Turn it off if you would rather NAVFLIX only
       went online when you ask it to.
     </p>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
@@ -930,7 +930,7 @@
       <input type="text" id="setTmdb" placeholder="Leave empty to use the keyless iTunes catalogue">
     </label>
     <p class="muted" style="font-size:13px;margin:-8px 0 4px">
-      Posters are fetched when you press <b>Get artwork</b> — and, if you have left
+      Posters are fetched when you press <b>Get artwork</b> and, if you have left
       the switch above on, in the background too. Either way they are cached on
       disk, so it happens once. Without a key it uses the free, keyless Cinemeta catalogue,
       which is IMDb-backed and covers mainstream films well. A free key from themoviedb.org improves
@@ -955,7 +955,7 @@
     <p class="muted" style="font-size:13px;margin:8px 0 14px">
       <b>Mark everything watched</b> is for a show you had already seen before
       NAVFLIX met it. <b>Start it over</b> puts every episode back to unseen for a
-      rewatch, and keeps what has been read and fetched — resolutions, cast,
+      rewatch, and keeps what has been read and fetched: resolutions, cast,
       artwork and any subtitle offsets you tuned.
     </p>
     <h3 class="sec">Backup</h3>
@@ -963,7 +963,7 @@
     <button class="mini" id="btnImport">Restore from a backup</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <p class="muted" style="font-size:13px;margin:8px 0 14px">
-      One file holding every collection, position, tag and subtitle offset — the
+      One file holding every collection, position, tag and subtitle offset, the
       only part of NAVFLIX that cannot be rebuilt. Keep it anywhere; it carries no
       pairing code, no tokens and no API key, so it is a file rather than a
       credential. Artwork and subtitles are left out too, since they can always be
@@ -976,7 +976,7 @@
       Deleting a video leaves its saved position behind, and removing a folder
       leaves its cached posters and subtitles on disk. Nothing clears either up.
       This looks for both and shows you exactly what it found before removing
-      anything — a folder it cannot read is left completely alone, since an
+      anything. A folder it cannot read is left completely alone, since an
       unplugged drive looks the same as a deleted one.
     </p>
     <h3 class="sec">Danger zone</h3>
@@ -984,7 +984,7 @@
     <button class="mini danger" id="btnResetAll">Erase this collection's progress</button>
     <p class="muted" style="font-size:13px;margin:8px 0 0">
       Erasing also discards everything the background worked out about these files
-      — resolutions, tracks, cast and crew, subtitle offsets — all of which has to
+      (resolutions, tracks, cast and crew, subtitle offsets), all of which has to
       be read and fetched again. To watch it again, use <b>Start it over</b>.
     </p>
   </div>
@@ -1232,7 +1232,7 @@ function showRenderError(e) {
   app.innerHTML =
     '<div class="boot"><div>' +
     '<div class="msg">Something went wrong drawing this page</div>' +
-    '<div class="dwhy">Your collections and progress are safe — this is the page, not your ' +
+    '<div class="dwhy">Your collections and progress are safe. This is the page, not your ' +
     'library. Reloading usually clears it. If it comes back, the Library is a simpler ' +
     'screen and will normally still open.</div>' +
     '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">' +
@@ -1520,7 +1520,7 @@ function renderCoverage(every) {
     .sort((a, b) => b.left - a.left);
 
   if (!gaps.length) {
-    h += '<p class="covmore">Nothing outstanding \u2014 every folder is read, illustrated and identified.</p>';
+    h += '<p class="covmore">Nothing outstanding. Every folder is read, illustrated and identified.</p>';
     return h + '</div>';
   }
 
@@ -1549,7 +1549,7 @@ function renderFilmGrid(q) {
   if (!films) return '<div class="libempty">Reading your films\u2026</div>';
   if (!films.length) {
     return '<div class="libempty">No film shelves are reachable. ' +
-      'Folders that look like TV shows are not listed here \u2014 their episodes live in ' +
+      'Folders that look like TV shows are not listed here, since their episodes live in ' +
       'the show itself.</div>';
   }
 
@@ -1786,10 +1786,10 @@ function renderLibrary() {
     if (c.missing) sub = 'Folder not found';
     else if (!c.total) sub = 'Nothing playable in here';
     else if (c.done >= c.total) {
-      sub = 'Finished — all ' + c.total + ' watched';
+      sub = 'Finished, all ' + c.total + ' watched';
       if (c.timesWatched > 1) sub += ' \u00b7 ' + c.timesWatched + ' times';
     }
-    else sub = 'Next: ' + esc(c.currentTitle || '—');
+    else sub = 'Next: ' + esc(c.currentTitle || 'unknown');
 
     h += '<div class="libcard" data-id="' + c.id + '">' +
       '<div class="libart" style="' +
@@ -2062,7 +2062,7 @@ async function detailsScan(force) {
     const ok = await uiConfirm({
       title: 'Read everything again?',
       message: 'Every file header is re-read and every title looked up again. ' +
-        'Nothing is deleted \u2014 use this when files have been replaced or a title was matched wrongly.',
+        'Nothing is deleted. Use this when files have been replaced or a title was matched wrongly.',
       confirmLabel: 'Rescan',
     });
     if (!ok) return;
@@ -2161,7 +2161,7 @@ function renderDetails() {
     const unscanned = sum.files - sum.scanned;
     const unknown = D.series ? (D.show ? 0 : 1) : sum.files - sum.identified;
     let line;
-    if (!sum.files) line = 'Nothing to look at \u2014 this folder has no video files.';
+    if (!sum.files) line = 'Nothing to look at. This folder has no video files.';
     else if (unscanned || unknown) {
       line = [
         unscanned ? unscanned + ' file' + (unscanned === 1 ? '' : 's') + ' not read yet' : '',
@@ -2376,15 +2376,15 @@ const GUIDE = [
   ['start', 'Getting started', [
     ['Add a folder', 'Press <b>+ Add</b> in the top bar, or the <b>Add a folder</b> tile in the Library. ' +
       'Point it at a folder of films, or at a TV show. Nothing is copied or moved, since NAVFLIX only reads.'],
-    ['Several at once', 'Every folder in the picker has a tick box, and <b>Tick all n here</b> takes the lot — a shelf of sixty shows is one trip through the dialog rather than sixty. Clicking the row still walks into it; only the box selects. Ticks are kept while you move around, so shows from one folder and films from another can go in together. Anything with no video files in it is skipped and the count says so.'],
-    ['Films or a show?', 'It works this out on its own: if most of the files look like episodes, the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf. Recognised forms include <code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, <code>S1 - 01</code>, a <code>Season 2</code> folder with <code>05 - Grilled</code> inside, and a plain run of <code>01. Title</code>, <code>02. Title</code> with no season named anywhere — which is how a lot of anime arrives.'],
-    ['Numbered films are still films', 'A film shelf is numbered the same way as that last case: <code>01 Iron Man (2008)</code>. What separates them is the year — a four-digit year in the name means it is a film, not episode one. Odd files do not matter either way, since the decision is made on what most of the folder looks like.'],
+    ['Several at once', 'Every folder in the picker has a tick box, and <b>Tick all n here</b> takes the lot, so a shelf of sixty shows is one trip through the dialog rather than sixty. Clicking the row still walks into it; only the box selects. Ticks are kept while you move around, so shows from one folder and films from another can go in together. Anything with no video files in it is skipped and the count says so.'],
+    ['Films or a show?', 'It works this out on its own: if most of the files look like episodes, the collection becomes a show and is grouped into seasons. Otherwise it is a film shelf. Recognised forms include <code>S01E01</code>, <code>s02ep1</code>, <code>3x01</code>, <code>S1 - 01</code>, a <code>Season 2</code> folder with <code>05 - Grilled</code> inside, and a plain run of <code>01. Title</code>, <code>02. Title</code> with no season named anywhere, which is how a lot of anime arrives.'],
+    ['Numbered films are still films', 'A film shelf is numbered the same way as that last case: <code>01 Iron Man (2008)</code>. What separates them is the year: a four-digit year in the name means it is a film, not episode one. Odd files do not matter either way, since the decision is made on what most of the folder looks like.'],
     ['When it guesses wrong', 'Every row in <b>Manage</b> has an <b>Auto / Films / TV series</b> dropdown, and the ' +
-      'line under the folder name says which way it went — <i>read as films</i> when the filenames decided, ' +
+      'line under the folder name says which way it went: <i>read as films</i> when the filenames decided, ' +
       '<b>set to films</b> when you did. The choice is stored, so it survives a rescan, a move to another drive ' +
       'and any later change to the rules. Forcing a folder to be a show when nothing in it parses as an episode ' +
       'is fine: its files group under <i>Not recognised as episodes</i> instead of by season, and none are hidden.'],
-    ['Your own tags', '<b>Manage → Tags</b> on any folder: <i>anime</i>, <i>comfort</i>, <i>sinhala</i>, <i>with dad</i> — ' +
+    ['Your own tags', '<b>Manage → Tags</b> on any folder: <i>anime</i>, <i>comfort</i>, <i>sinhala</i>, <i>with dad</i>, ' +
       'whatever the catalogue cannot know. They go on the folder rather than each file, so a show is tagged once ' +
       'instead of two hundred times. A row of them appears in the Library once you have made some; picking two ' +
       'means both, and each count is what you get by pressing it, so a 0 is a visible dead end. Spelling is ' +
@@ -2397,7 +2397,7 @@ const GUIDE = [
       'Two strengths, and it applies the next time something starts.'],
     ['Choosing the audio track', 'Under the billboard, beside the subtitles, whenever the file carries more than ' +
       'one. A stereo track was mixed for two speakers by someone who thought about dialogue, so it is usually ' +
-      'clearer on a TV than a 5.1 track folded down — and NAVFLIX says so when a file offers both. <b>Auto</b> ' +
+      'clearer on a TV than a 5.1 track folded down, and NAVFLIX says so when a file offers both. <b>Auto</b> ' +
       'leaves VLC to its own default, so nothing changes until you choose. A change lands on the film already ' +
       'playing; going back to Auto waits for the next start.'],
   ]],
@@ -2419,17 +2419,17 @@ const GUIDE = [
   ['browse', 'Getting around', [
     ['Library', 'The <b>☰ Library</b> link, or the NAVFLIX wordmark, shows every folder as a card with its ' +
       'cover, progress and what is next. Better than the tab row once you have a few.'],
-    ['Continue watching', 'Three cards above the shelves, answering “what was I doing?” without making you remember which folder it was in: the film you are part-way through, the episode you are part-way through, and the next episode of whichever show you watched last. Any spare slot is filled from your most recent folders, and the same title never appears twice. A card marked <b>Resume</b> carries a progress bar and says how much is left; <b>Next episode</b> and <b>Up next</b> have not been started. Clicking one opens that folder with the title on the billboard — it does not start playing. The row is hidden while you are searching or filtering, since it answers a question you are no longer asking.'],
+    ['Continue watching', 'Three cards above the shelves, answering “what was I doing?” without making you remember which folder it was in: the film you are part-way through, the episode you are part-way through, and the next episode of whichever show you watched last. Any spare slot is filled from your most recent folders, and the same title never appears twice. A card marked <b>Resume</b> carries a progress bar and says how much is left; <b>Next episode</b> and <b>Up next</b> have not been started. Clicking one opens that folder with the title on the billboard. It does not start playing. The row is hidden while you are searching or filtering, since it answers a question you are no longer asking.'],
     ['The tab row', 'It carries the three collections you played most recently, <b>newest first</b>, plus whatever you have open or playing. Everything else lives in the <b>\u2630 Library</b>, so adding a tenth folder never buries the ones you watch.'],
     ['Search', 'The box beside those buttons narrows the grid as you type, matching the folder name and what is up next in it. The counts on the buttons follow the search, so you can see how the matches split between films and shows. <b>Esc</b> clears it.'],
-    ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives — searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],
-    ['What search cannot see', 'A folder on a drive that is unplugged is skipped, since its file list cannot be read. Cast and directors are not searched from here either — that lives in <b>Details</b>, which searches one collection at a time.'],
-    ['Watched or not', 'The second pair of buttons — <b>Watched</b> and <b>Not watched</b> — asks a different question from the first, so the two combine: <i>TV series</i> plus <i>Not watched</i> is the shows you have yet to start. <b>Watched</b> means a folder with nothing left in it; everything else, untouched or half way through, counts as not watched, so the two numbers always add up to the whole shelf. Pressing the one already on turns it off again.'],
+    ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives. Searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],
+    ['What search cannot see', 'A folder on a drive that is unplugged is skipped, since its file list cannot be read. Cast and directors are not searched from here either; that lives in <b>Details</b>, which searches one collection at a time.'],
+    ['Watched or not', 'The second pair of buttons, <b>Watched</b> and <b>Not watched</b>, asks a different question from the first, so the two combine: <i>TV series</i> plus <i>Not watched</i> is the shows you have yet to start. <b>Watched</b> means a folder with nothing left in it; everything else, untouched or half way through, counts as not watched, so the two numbers always add up to the whole shelf. Pressing the one already on turns it off again.'],
     ['Films or series', 'Above the Library grid sit <b>Everything</b> / <b>Films</b> / <b>TV series</b> buttons. A collection is filed by what is actually in its folder. A folder on a drive that is currently unplugged is still filed correctly, because the filenames it saw last time are enough to tell episodes from films. A button with nothing behind it is greyed out rather than hidden.'],
     ['Stop the extra tab', 'Once you launch from the installed icon, the browser window the server opens on startup is just clutter. Turn off <b>Open a window when NAVFLIX starts</b> in Settings. The server still prints its address, so you can always get back by hand.'],
     ['Install it as an app', 'In Chrome or Edge, the address bar shows an install icon while NAVFLIX is open. Installing gives it a Start menu entry and its own window with no address bar and no browser buttons. It still needs the server running, so keep starting it the usual way.'],
     ['The Back button', 'Steps back through where you have been: the collection you were on before, the Library, the Guide. If a dialog is open, Back closes that first. Once it runs out of places to go it settles on the <b>Library</b> and stays there, so Back never drops you out of NAVFLIX. To actually leave, close the tab.'],
-    ['A season at a time', 'Each season heading carries <b>✓ Watch season</b>, which ticks off every episode in it — for a show you have already seen and only want tracked from here on. When a season is complete the button turns into <b>↻ Unwatch season</b>, which puts it all back to not started and clears the resume points inside it. Both ask before doing anything, and neither touches the other seasons.'],
+    ['A season at a time', 'Each season heading carries <b>✓ Watch season</b>, which ticks off every episode in it, for a show you have already seen and only want tracked from here on. When a season is complete the button turns into <b>↻ Unwatch season</b>, which puts it all back to not started and clears the resume points inside it. Both ask before doing anything, and neither touches the other seasons.'],
     ['Clicking a poster', 'Selects it: the billboard moves to that title. It does <b>not</b> start playing, ' +
       'and the page stays where it is so you can keep browsing.'],
     ['Play one directly', 'Hover a poster and use the <b>▶</b> button on it.'],
@@ -2445,16 +2445,16 @@ const GUIDE = [
     ['Sound', 'While something is playing the handset shows a <b>Sound</b> row: mute, quieter, louder, with the level as a percentage. It moves VLC\u2019s own volume, which VLC then remembers for next time, so setting it once from the sofa sticks.'],
     ['Subtitles from the sofa', 'The <b>Subtitles</b> picker is the same one the dashboard has, and a change lands on the film that is already running rather than waiting for the next sitting. The exception is a downloaded <code>.srt</code>, which VLC only accepts when it starts, so that one takes effect at the next sitting.'],
     ['Other websites cannot reach it', 'A web page open in another tab runs on this machine too, so it used to be able ' +
-      'to send NAVFLIX requests as if it were the dashboard — including ones that change the VLC path and then play. ' +
+      'to send NAVFLIX requests as if it were the dashboard, including ones that change the VLC path and then play. ' +
       'Every request is now checked first: anything that changes something must come from NAVFLIX itself and be ' +
       'sent as JSON, and a request addressed to an unfamiliar domain name is refused outright. The dashboard, the ' +
       'phone remote, localhost and the address in the QR code all work exactly as before.'],
     ['Browsing from the phone', 'The <b>&#9776; Browse</b> button opens your collections, and tapping one opens its list of films or episodes, grouped by season for a show. Tapping a title <b>selects</b> it and returns you to the handset screen; the big red button is still what starts it, so nothing plays by accident.'],
     ['It moves the PC too', 'Picking a collection on the phone switches the PC to it as well, so the two never disagree about what you are watching.'],
     ['Turning it on', 'Settings &rarr; <b>Phone remote</b>, then restart NAVFLIX. Until you do that the server only listens to this computer, which is why the change needs a restart.'],
-    ['Where the address is', 'The <b>QR</b> button in the top bar shows the address, the code and the scannable version together. Settings &rarr; <b>Phone remote</b> has the same thing with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time either one is opened, so it is always the current one — which matters, because it changes when this PC joins another network.'],
-    ['It changed by itself', 'The address is this PC on your network, so it changes when the PC joins a different one \u2014 home Wi-Fi, a phone hotspot, the office. The pairing code does not change, and a paired phone stays paired. Just open Settings for the new address.'],
-    ['Pairing', 'Press <b>QR</b> in the top bar and point the phone camera at it \u2014 the code travels in the link, so it pairs on its own. The button only appears once the remote is on and this machine has a network address. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
+    ['Where the address is', 'The <b>QR</b> button in the top bar shows the address, the code and the scannable version together. Settings &rarr; <b>Phone remote</b> has the same thing with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time either one is opened, so it is always the current one. That matters, because it changes when this PC joins another network.'],
+    ['It changed by itself', 'The address is this PC on your network, so it changes when the PC joins a different one: home Wi-Fi, a phone hotspot, the office. The pairing code does not change, and a paired phone stays paired. Just open Settings for the new address.'],
+    ['Pairing', 'Press <b>QR</b> in the top bar and point the phone camera at it. The code travels in the link, so it pairs on its own. The button only appears once the remote is on and this machine has a network address. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
     ['What the phone cannot do', 'Settings, the folder browser, adding or removing collections, and erasing progress are all refused over the network, whether or not the phone is paired. Those stay on the PC because they can change what gets run and can read your disk.'],
     ['Removing a phone', '<b>Unpair this phone</b> on the handset revokes it properly, not just locally. <b>New pairing code</b> in Settings drops every paired device at once, which is what to use if a phone goes missing. Switching the remote off also clears them all.'],
     ['It will not start now', 'Switching the remote on means the port has to be free on every network interface, not just this machine, so something that was quietly holding it can suddenly clash. NAVFLIX says which port and exits. Free it, or start with a different one: <code>set PORT=8788 &amp;&amp; node server.js</code>.'],
@@ -2462,7 +2462,7 @@ const GUIDE = [
   ]],
 
   ['art', 'Artwork', [
-    ['Wrong show matched?', 'A remake carries its original title, so searching finds two shows with the same name. Put the year in the folder name — <code>Avatar The Last Airbender - [2005]</code> — and the right one is chosen. If a collection has already latched onto the wrong one, use <b>Manage → Re-identify</b> to look it up again and replace the artwork. Your progress is untouched.'],
+    ['Wrong show matched?', 'A remake carries its original title, so searching finds two shows with the same name. Put the year in the folder name, as in <code>Avatar The Last Airbender - [2005]</code>, and the right one is chosen. If a collection has already latched onto the wrong one, use <b>Manage → Re-identify</b> to look it up again and replace the artwork. Your progress is untouched.'],
     ['Episodes show their own frame', 'A show has one poster, so every episode used to look identical. Episodes now use the still from that episode, which the catalogue provides and NAVFLIX already caches. Those stills are widescreen, so a show gets wider cards; film shelves keep tall posters.'],
     ['Your own files win', 'An image named after the film, such as <code>Iron Man (2008).jpg</code>, is always used ' +
       'first. In a folder-per-film layout, <code>poster.jpg</code> and <code>fanart.jpg</code> are picked up too.'],
@@ -2478,8 +2478,8 @@ const GUIDE = [
     ['Picked for you', 'MKV files usually carry several subtitle tracks. NAVFLIX reads them and turns on the plain ' +
       'English one, deliberately avoiding <b>Forced</b> (foreign dialogue only), <b>SDH</b> (adds sound cues) and ' +
       '<b>Commentary</b> (matches the director track, not the film).'],
-    ['When nothing says "English"', 'Plenty of releases leave the language blank. If exactly one track is untagged it is turned on anyway and labelled <i>best guess</i>, because on a disc rip that one is almost always the English one \u2014 including when it is a Blu-ray picture track sitting beside tagged foreign ones. If several are untagged there is no way to tell them apart, so none is chosen and the dropdown is yours.'],
-    ['Your choice sticks; VLC\u2019s does not', 'Pick a track from the <b>Subtitles</b> dropdown and it is remembered for that film and reapplied every sitting. Choosing one inside VLC\u2019s own menu only lasts as long as that window \u2014 NAVFLIX starts a fresh VLC for each sitting, so you would be setting it again every time.'],
+    ['When nothing says "English"', 'Plenty of releases leave the language blank. If exactly one track is untagged it is turned on anyway and labelled <i>best guess</i>, because on a disc rip that one is almost always the English one, including when it is a Blu-ray picture track sitting beside tagged foreign ones. If several are untagged there is no way to tell them apart, so none is chosen and the dropdown is yours.'],
+    ['Your choice sticks; VLC\u2019s does not', 'Pick a track from the <b>Subtitles</b> dropdown and it is remembered for that film and reapplied every sitting. Choosing one inside VLC\u2019s own menu only lasts as long as that window, because NAVFLIX starts a fresh VLC for each sitting, so you would be setting it again every time.'],
     ['Change it', 'The <b>Subtitles</b> dropdown lists every track with a note on what it is. ' +
       '<code>[image]</code> marks Blu-ray bitmap subtitles, which display fine but cannot be resized.'],
     ['Nothing in the file?', 'Press <b>⬇ Download subtitles</b>. It checks several candidates and rejects any that ' +
@@ -2488,10 +2488,10 @@ const GUIDE = [
       '<code>+0.1</code> <code>+1s</code>. It is stored per film and reapplied every time, unlike VLC\'s own ' +
       'adjustment, which it forgets when it closes.'],
     ['Out of sync, drift that grows', 'That is a frame-rate mismatch: the subtitle was timed against a copy of the film that runs at a different speed, so the error is a percentage and grows as the film runs. Press <b>⏱ Re-time…</b> or the <b>i</b> beside the SYNC row. Only works on downloaded subtitles, since it rewrites the file.'],
-    ['The Re-time button', 'It says what is currently set — <b>Re-time: off</b>, <b>Re-time: 25 → 23.976</b> — and opens a list of the states the file can be in, with a tick against the one it is in now. Each line says what you would be seeing if it were the right choice. Picking one <b>replaces</b> the setting rather than adding to it, so you can try them all and always get back.'],
+    ['The Re-time button', 'It says what is currently set (<b>Re-time: off</b>, <b>Re-time: 25 → 23.976</b>) and opens a list of the states the file can be in, with a tick against the one it is in now. Each line says what you would be seeing if it were the right choice. Picking one <b>replaces</b> the setting rather than adding to it, so you can try them all and always get back.'],
     ['The i button', 'Just the explanation, with none of the controls: what an offset is, what a drift is, and how to tell which you have. Separate from the picker, because most of the time you only want one of the two.'],
-    ['Which one to pick', 'Nearly every rip is <b>23.976fps</b>, so the first choice is almost always right. The two 24fps lines are for a true cinema transfer and are rare — picking one when you needed 23.976 looks correct for ten minutes and is eight seconds out by the end, because the ratios differ by a tenth of a percent.'],
-    ['Undo a re-timing', 'Re-timings multiply together, so two wrong guesses leave a number no fixed ratio can undo. <b>Undo — back to how it downloaded</b> appears in the panel once a subtitle has been re-timed and divides out everything applied, putting the file back byte for byte. Start again from there.'],
+    ['Which one to pick', 'Nearly every rip is <b>23.976fps</b>, so the first choice is almost always right. The two 24fps lines are for a true cinema transfer and are rare. Picking one when you needed 23.976 looks correct for ten minutes and is eight seconds out by the end, because the ratios differ by a tenth of a percent.'],
+    ['Undo a re-timing', 'Re-timings multiply together, so two wrong guesses leave a number no fixed ratio can undo. <b>Undo: back to how it downloaded</b> appears in the panel once a subtitle has been re-timed and divides out everything applied, putting the file back byte for byte. Start again from there.'],
     ['Still wrong', '<b>⇄ Try another</b> steps to the next candidate. It is probably timed for another release.'],
     ['Your own file', 'Drop <code>FilmName.srt</code> beside the video and it is found automatically.'],
   ]],
@@ -2500,39 +2500,39 @@ const GUIDE = [
     ['The Details page', 'The <b>Details</b> button in the top bar opens a breakdown of the collection you have open: what each file actually is, and who made it. Press <b>Scan</b> once and it is remembered.'],
     ['Read from the file, not the name', 'A release called <code>1080p</code> is quite often not. NAVFLIX reads the picture size, codecs, audio and subtitle tracks and true runtime out of the container header itself, so <i>1080p</i> here means the frame really is that size. No ffmpeg is involved.'],
     ['Cast and crew', 'The same scan looks each title up and keeps the director, writer, cast, genres, IMDb rating and plot. A show is one lookup for the whole folder; a film shelf is one per film, which takes about a minute for a hundred films.'],
-    ['Counting the shelf', 'The boxes across the top tally the whole folder — how much of it is 4K, how much is H.265, which directors and actors come up most. <b>Click any line to filter</b> the list below it, and click it again to clear.'],
+    ['Counting the shelf', 'The boxes across the top tally the whole folder: how much of it is 4K, how much is H.265, which directors and actors come up most. <b>Click any line to filter</b> the list below it, and click it again to clear.'],
     ['Looking something up', 'The search box matches titles, filenames, actors, directors and genres at once, so <i>dicaprio</i> finds his films wherever they sit in the folder. Click any row to open everything known about it.'],
     ['What it costs', 'Reading the headers is local and needs no internet; it takes roughly a minute for eight hundred files on an external drive. Only the cast and crew half goes online. Nothing is scanned until you press the button.'],
-    ['Formats it can read', 'Matroska (<code>.mkv</code>, <code>.webm</code>) and MP4 (<code>.mp4</code>, <code>.m4v</code>, <code>.mov</code>) — which is nearly everything. Anything else falls back to what the filename claims and is labelled <b>not read</b> so you know the difference. Files are identified by their contents, so an MP4 misnamed <code>.mkv</code> is still read correctly and says so.'],
+    ['Formats it can read', 'Matroska (<code>.mkv</code>, <code>.webm</code>) and MP4 (<code>.mp4</code>, <code>.m4v</code>, <code>.mov</code>), which is nearly everything. Anything else falls back to what the filename claims and is labelled <b>not read</b> so you know the difference. Files are identified by their contents, so an MP4 misnamed <code>.mkv</code> is still read correctly and says so.'],
   ]],
 
   ['keep', 'Where things are kept', [
     ['Your progress', '<code>data/state.json</code> holds every collection, position and watch log. ' +
       'Back it up and your marathons survive a reinstall.'],
-    ['Downloads', '<code>data/art/</code> for artwork, <code>data/subs/</code> for subtitles — each downloaded subtitle keeps an untouched <code>.srt.orig</code> beside it, so re-timing always starts from the download rather than from the last rewrite. Safe to delete; ' +
+    ['Downloads', '<code>data/art/</code> for artwork, <code>data/subs/</code> for subtitles. Each downloaded subtitle keeps an untouched <code>.srt.orig</code> beside it, so re-timing always starts from the download rather than from the last rewrite. Safe to delete; ' +
       'both can be fetched again.'],
     ['Living on a portable drive', 'Collections on the same disk as the app are remembered relative to it, so the drive can be one letter on Windows and a mount point on Linux without repointing anything. Separators are stored the same way on both, and VLC is remembered per platform.'],
     ['Carrying Node and VLC too', 'NAVFLIX prefers a Node or VLC sitting in its own <code>runtime/</code> folder over anything installed, so the drive can run on a PC with neither. Windows can be fully self-contained. Linux cannot: VideoLAN publish no Linux build, so VLC there comes from the package manager (<code>sudo apt install vlc</code>).'],
-    ['Making the move', 'Run NAVFLIX once where it is now — it converts the state file and keeps a backup beside it, and renames cached artwork to match so nothing needs fetching again — then copy the whole folder across. Media left on an internal drive keeps an absolute path, which is right, since it is not coming with you. Both machines still need Node and VLC.'],
+    ['Making the move', 'Run NAVFLIX once where it is now (it converts the state file and keeps a backup beside it, and renames cached artwork to match so nothing needs fetching again), then copy the whole folder across. Media left on an internal drive keeps an absolute path, which is right, since it is not coming with you. Both machines still need Node and VLC.'],
     ['All films at once', 'The Library shows folders, which is the right unit for a marathon and the wrong ' +
       'one for <i>what have I actually got</i>. <b>All films</b> sets the folders aside and lists every film in ' +
       'the library on one screen, its shelf shown as a label. Watched / Not watched, the search box and the ' +
       'order all still apply, and clicking a film opens its folder with that film on the billboard. Shows are ' +
-      'left out on purpose — sixty of them flattened would be three thousand rows, and the search box already ' +
+      'left out on purpose: sixty of them flattened would be three thousand rows, and the search box already ' +
       'reaches every episode.'],
     ['Watching it again', 'Settings → <b>Start it over</b> puts every episode back to not started, and the ' +
       'finished screen offers the same thing as <b>Watch it again</b>. Everything already read and fetched is ' +
       'kept, so nothing has to be downloaded twice. <b>Mark everything watched</b> sits beside it, for a show ' +
       'you had already seen before NAVFLIX met it.'],
-    ['How many times through', 'Each time a folder becomes complete the count goes up, however you got there — ' +
+    ['How many times through', 'Each time a folder becomes complete the count goes up, however you got there: ' +
       'watching the last episode, ticking a season, or marking the lot. The finished screen then reads ' +
       '<i>3rd time through</i>, and the Library card says <i>3 times</i>. Folders seen once say nothing, since ' +
       'that is the ordinary case. Starting over does not reset the count; that is rather the point of it.'],
     ['Starting over completely', 'Settings → <b>Erase this collection\'s progress</b> forgets the folder entirely, ' +
-      'including its resolutions, cast, subtitle offsets and watch log — all of which has to be read and fetched ' +
+      'including its resolutions, cast, subtitle offsets and watch log, all of which has to be read and fetched ' +
       'again. For a rewatch you want <b>Start it over</b> instead. Other collections are untouched either way.'],
     ['Taking a backup', 'Settings → <b>Save a backup</b> writes one file holding every collection, position, tag ' +
-      'and subtitle offset — the only part of NAVFLIX that cannot be rebuilt. It carries no pairing code, no phone ' +
+      'and subtitle offset, the only part of NAVFLIX that cannot be rebuilt. It carries no pairing code, no phone ' +
       'tokens and no API key, so it is a file rather than a credential and can live anywhere. <b>Restore from a ' +
       'backup</b> reads it back, showing what the file holds before replacing anything and writing what it replaced ' +
       'into <code>data/backups/</code> first. Your phone stays paired and VLC\'s location on this machine is kept, ' +
@@ -2540,7 +2540,7 @@ const GUIDE = [
     ['Clearing out leftovers', 'Deleting a video leaves its saved position behind; removing a folder leaves its ' +
       'cached posters and subtitles on disk. Settings → <b>Look for leftovers</b> finds both, shows you every one ' +
       'of them by folder and filename, and removes nothing until you agree. A folder it cannot read is skipped ' +
-      'entirely — an unplugged drive looks exactly like a deleted one, and guessing wrong would throw away the ' +
+      'entirely, because an unplugged drive looks exactly like a deleted one, and guessing wrong would throw away the ' +
       'progress for a whole library. Your video files are never touched.'],
   ]],
 
@@ -2551,7 +2551,7 @@ const GUIDE = [
       '<code>10</code>) and it sorts as you expect. Shows use season and episode numbers instead, so their ' +
       'filenames can be inconsistent.'],
     ['A film is missing', 'Files under 20 MB are skipped, so samples and featurettes stay out of the queue.'],
-    ['Runtime shows as unknown', 'VLC reports it the first time a title plays. To fill it in for a whole folder without playing anything, open <b>Details</b> and press <b>Scan</b> — the runtime is written in the file itself, and reading it brings the part strip along with it.'],
+    ['Runtime shows as unknown', 'VLC reports it the first time a title plays. To fill it in for a whole folder without playing anything, open <b>Details</b> and press <b>Scan</b>. The runtime is written in the file itself, and reading it brings the part strip along with it.'],
     ['Nothing happens on Play', 'Check the VLC path in Settings. On macOS it must point inside the bundle: ' +
       '<code>VLC.app/Contents/MacOS/VLC</code>.'],
   ]],
@@ -2739,7 +2739,7 @@ function render() {
 
   if (!A) {
     $('#app').innerHTML = '<div class="blank"><h2>Welcome to NAVFLIX</h2>' +
-      '<p>Add a folder of movies and it becomes a series &mdash; played in order, ' +
+      '<p>Add a folder of movies and it becomes a series, played in order, ' +
       'one timed episode at a time, resuming at the exact second you stopped. ' +
       'Add one folder per marathon.</p>' +
       '<button class="btn btn-red" onclick="openAdd()">Add your first collection</button></div>';
@@ -2759,7 +2759,7 @@ function render() {
   if (A.missing) {
     html += '<div class="blank"><h2>Folder not found</h2>' +
       '<p><b>' + esc(A.path) + '</b> is not reachable. If the drive is unplugged, plug it back in. ' +
-      'If the folder moved, point this collection at its new home &mdash; your progress is kept.</p>' +
+      'If the folder moved, point this collection at its new home. Your progress is kept.</p>' +
       '<button class="btn btn-red" onclick="openRepath(\'' + A.id + '\')">Locate folder</button></div>';
     $('#app').innerHTML = html;
     return;
@@ -2867,10 +2867,10 @@ function render() {
       html += '<button class="btn btn-play" onclick="play(' + hero.index + ')">&#9654;&nbsp; ' +
         (A.fullMode
           ? (pos > 0
-              ? 'Resume' + (filmLeft ? ' \u2014 ' + mins(filmLeft) + ' to go' : '')
-              : 'Play' + (dur > 0 ? ' \u2014 ' + mins(dur) : ''))
+              ? 'Resume' + (filmLeft ? ' \u00b7 ' + mins(filmLeft) + ' to go' : '')
+              : 'Play' + (dur > 0 ? ' \u00b7 ' + mins(dur) : ''))
           : (endsThisSitting
-              ? 'Finish it \u2014 ' + mins(filmLeft) + ' to go'
+              ? 'Finish it \u00b7 ' + mins(filmLeft) + ' to go'
               : (pos > 0 ? 'Next ' : 'Play ') + mins(A.sittingLength))) + '</button>';
     }
     const job = S.artJob;
@@ -2878,7 +2878,7 @@ function render() {
     const missing = A.queue.filter((m) => m.needsArt && !m.artTried).length;
     if (jobHere && job.running) {
       html += '<button class="btn btn-ghost" onclick="cancelArt()">' +
-        'Fetching artwork &middot; ' + job.done + '/' + job.total + ' &middot; ' + job.found + ' found &mdash; stop</button>';
+        'Fetching artwork &middot; ' + job.done + '/' + job.total + ' &middot; ' + job.found + ' found &middot; stop</button>';
     } else if (missing) {
       html += '<button class="btn btn-ghost" onclick="fetchArt()" title="Looks up each title on ' +
         (S.tmdbKey ? 'TMDB' : 'the free Cinemeta catalogue') + ' and caches the poster and backdrop on disk">' +
@@ -3049,7 +3049,7 @@ function audioRow(m) {
   h += '<option value="auto"' + (a.choice === 'auto' ? ' selected' : '') + '>Auto</option>';
   a.tracks.forEach((t) => {
     h += '<option value="' + t.id + '"' + (a.choice === t.id ? ' selected' : '') + '>' +
-      esc(t.label) + (t.def ? ' — default' : '') + '</option>';
+      esc(t.label) + (t.def ? ' (default)' : '') + '</option>';
   });
   h += '</select>';
 
@@ -3085,7 +3085,7 @@ function subtitleRow(m) {
 
   if (!s.tracks.length) {
     return '<div class="subrow"><span class="subhint">' +
-      'No subtitles in this file &mdash; download one, or drop a matching <b>.srt</b> beside it' +
+      'No subtitles in this file. Download one, or drop a matching <b>.srt</b> beside it' +
       '</span>' + getBtn + jobErr + '</div>';
   }
 
@@ -3094,15 +3094,15 @@ function subtitleRow(m) {
 
   h += '<option value="auto"' + (s.choice === 'auto' ? ' selected' : '') + '>' +
     (s.activeLabel && s.choice === 'auto'
-      ? 'Auto — ' + esc(s.activeLabel)
-      : (s.tracks.length ? 'Auto' : 'Auto — none')) + '</option>';
+      ? 'Auto: ' + esc(s.activeLabel)
+      : (s.tracks.length ? 'Auto' : 'Auto: none')) + '</option>';
   h += '<option value="off"' + (s.choice === 'off' ? ' selected' : '') + '>Off</option>';
 
   s.tracks.forEach((t) => {
     const note = KIND_NOTE[t.kind];
     h += '<option value="' + t.id + '"' + (s.choice === t.id ? ' selected' : '') + '>' +
       esc(t.label) +
-      (note ? ' — ' + note : '') +
+      (note ? ' (' + note + ')' : '') +
       (t.bitmap ? ' [image]' : '') +
       '</option>';
   });
@@ -3110,7 +3110,7 @@ function subtitleRow(m) {
 
   h += getBtn;
   if (s.choice === 'auto' && s.guess) {
-    h += '<span class="subhint">language not tagged in the file &mdash; best guess</span>';
+    h += '<span class="subhint">language not tagged in the file, best guess</span>';
   } else if (s.activeId === null) {
     h += '<span class="subhint">none will be shown</span>';
   }
@@ -3172,11 +3172,11 @@ const DRIFT_CHOICES = [
   [1, 'As it downloaded', 'off',
     'No re-timing. Start here if you are not sure.'],
   [1.0427, 'Runs ahead, further ahead as it goes', '25 \u2192 23.976',
-    'Written against a sped-up PAL copy. Stretches every time out by 4.3%. Almost always the right one \u2014 nearly every rip is 23.976fps.'],
+    'Written against a sped-up PAL copy. Stretches every time out by 4.3%. Almost always the right one, since nearly every rip is 23.976fps.'],
   [0.9590, 'Lags behind, further behind as it goes', '23.976 \u2192 25',
     'The reverse: written against the slower copy. Pulls every time in by 4.1%.'],
   [1.0417, 'Runs ahead, on a true 24fps transfer', '25 \u2192 24',
-    'Same direction as the second, a shade less. Rare \u2014 and a tenth of a percent wrong is eight seconds by the end of a long film.'],
+    'Same direction as the second, a shade less. Rare, and a tenth of a percent wrong is eight seconds by the end of a long film.'],
   [0.9600, 'Lags behind, on a true 24fps transfer', '24 \u2192 25',
     'Same direction as the third, a shade less. Equally rare.'],
 ];
@@ -3214,7 +3214,7 @@ function renderDrift() {
 
   if (!known) {
     h += '<p class="picknote">This file is currently at <b>×' + now.toFixed(4) +
-      '</b>, which is not one of these \u2014 left over from when picking two in a row ' +
+      '</b>, which is not one of these. It is left over from when picking two in a row ' +
       'multiplied them together. Choosing any line above replaces it outright.</p>';
   } else {
     h += '<p class="picknote">Picking a line <b>replaces</b> the current setting rather than ' +
@@ -3235,7 +3235,7 @@ function renderDrift() {
 // The explanation on its own, for when that is all you wanted.
 function whySubs() {
   $('#whyBody').innerHTML =
-    '<p class="dwhy">A subtitle file is a list of stopwatch times \u2014 <i>at 1:52.6, show this line</i>. ' +
+    '<p class="dwhy">A subtitle file is a list of stopwatch times: <i>at 1:52.6, show this line</i>. ' +
     'It knows nothing about your copy of the film, so it is only right if both were timed the same way.</p>' +
     '<table class="whytab">' +
     '<tr><td>Out by the same amount all the way through</td>' +
@@ -3244,7 +3244,7 @@ function whySubs() {
     '<td>The two copies run at different speeds. Fix it under <b>Re-time</b>.</td></tr>' +
     '</table>' +
     '<p class="dwhy">A film shot at 24 frames a second was transferred for European TV by simply ' +
-    'playing it 4% faster, at 25 \u2014 same footage, five minutes shorter. Subtitles written against ' +
+    'playing it 4% faster, at 25: same footage, five minutes shorter. Subtitles written against ' +
     'that copy are 4% too early for yours, and being a <b>percentage</b>, the gap grows as the film ' +
     'runs. No amount of SYNC will fix that: you would correct the first half and break the second.</p>' +
     '<p class="dwhy">So: check the sync near the start and again near the end. Same error in both ' +
@@ -3269,7 +3269,7 @@ async function nextSub(index) {
     lastSig = '';
     render();
     scrollTo({ top: y, behavior: 'instant' });
-    toast('Fetched a different subtitle — the offset was reset.');
+    toast('Fetched a different subtitle. The offset was reset.');
   } catch (e) { toast(e.message); }
 }
 
@@ -3301,7 +3301,7 @@ async function setAudio(index, choice) {
     scrollTo({ top: y, behavior: 'instant' });
     // Switching a running VLC works; going back to Auto does not, because there
     // is no "use your default again" command to send it.
-    if (S.applied === 'next sitting') toast('Set — it applies the next time this starts.');
+    if (S.applied === 'next sitting') toast('Set. It applies the next time this starts.');
   } catch (e) { toast(e.message); }
 }
 
@@ -3641,7 +3641,7 @@ function renderManage() {
     '</span></div>' +
     '<button class="mini" data-act="rename" data-id="' + c.id + '">Rename</button>' +
     '<button class="mini" data-act="tags" data-id="' + c.id + '" ' +
-    'title="Your own labels for this folder — anime, comfort, with dad">Tags' +
+    'title="Your own labels for this folder, like anime, comfort or with dad">Tags' +
     ((c.tags && c.tags.length) ? ' (' + c.tags.length + ')' : '') + '</button>' +
     '<button class="mini" data-act="repath" data-id="' + c.id + '">Folder</button>' +
     // The detector draws its line at "most of the folder looks like episodes",
@@ -3657,7 +3657,7 @@ function renderManage() {
     (c.missing ? '' :
       '<button class="mini" data-act="reart" data-id="' + c.id + '" ' +
       'title="For when the wrong title was matched. Searches again and replaces every ' +
-      'image — a new season does not need this">Re-identify</button>') +
+      'image. A new season does not need this">Re-identify</button>') +
     '<button class="mini danger" data-act="remove" data-id="' + c.id + '">Remove</button></div>'
   ).join('');
 
@@ -3735,7 +3735,7 @@ function renderManage() {
             title: 'Look up "' + c.name + '" again?',
             // The dialog renders this with white-space: pre-line, so every \n is a
             // hard break. One sentence per line, wrapping left to the dialog.
-            message: 'For when the wrong title was matched — a remake instead of the original, say.\n\n' +
+            message: 'For when the wrong title was matched, such as a remake instead of the original.\n\n' +
               'The catalogue is searched from scratch and every image is downloaded again, ' +
               'not just the missing ones.\n\n' +
               'A new season does not need this. New episodes are noticed on their own, ' +
@@ -3774,7 +3774,7 @@ $('#btnSettings').onclick = () => {
   $('#minutesLabel').textContent = A
     ? 'Episode length for "' + A.name + '" (minutes per sitting)'
     : 'Episode length (minutes per sitting)';
-  $('#dzName').textContent = A ? '\u2014 ' + A.name : '';
+  $('#dzName').textContent = A ? '\u00b7 ' + A.name : '';
   $('#setVlc').value = S.vlcPath;
   $('#setFull').checked = S.fullscreen;
   $('#setOpen').checked = S.openOnStart !== false;
@@ -3786,8 +3786,8 @@ $('#btnSettings').onclick = () => {
   $('#setFullMode').checked = !!(A && A.fullMode);
   $('#setMinutes').disabled = !A || !!A.fullMode;
   $('#fullModeLabel').textContent = A
-    ? 'Whole-film mode for "' + A.name + '" — play straight to the end'
-    : 'Whole-film mode — play straight to the end';
+    ? 'Whole-film mode for "' + A.name + '": play straight to the end'
+    : 'Whole-film mode: play straight to the end';
   dlgSettings.showModal();
 };
 $('#setFullMode').onchange = () => { $('#setMinutes').disabled = $('#setFullMode').checked; };
@@ -3915,7 +3915,7 @@ async function copyText(text, showEl) {
     const sel = getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-    return toast('Selected it for you \u2014 press Ctrl+C to copy.');
+    return toast('Selected it for you. Press Ctrl+C to copy.');
   }
   toast('Could not copy. Type it from the box above.');
 }
@@ -4006,7 +4006,7 @@ $('#importFile').onchange = async () => {
     lastSig = '';
     paint();
     const d = S.imported || {};
-    toast('Restored — ' + d.collections + ' collections, ' + (d.files || 0).toLocaleString() + ' files.');
+    toast('Restored ' + d.collections + ' collections, ' + (d.files || 0).toLocaleString() + ' files.');
   } catch (e) { toast(e.message); }
 };
 
@@ -4023,7 +4023,7 @@ $('#btnTidy').onclick = async () => {
   const nothing = !plan.staleRecords.length && !plan.art && !plan.subs;
   if (nothing) {
     return toast(plan.skipped
-      ? 'Nothing to tidy — ' + plan.skipped + ' folder' + (plan.skipped === 1 ? '' : 's') +
+      ? 'Nothing to tidy. ' + plan.skipped + ' folder' + (plan.skipped === 1 ? '' : 's') +
         ' skipped as unreachable.'
       : 'Nothing to tidy. Everything on disk is spoken for.');
   }
@@ -4034,7 +4034,7 @@ $('#btnTidy').onclick = async () => {
       (plan.staleRecords.length === 1 ? '' : 's') + ' for files that are no longer there:');
     // Shown by folder, because the same filename in two shelves is otherwise
     // indistinguishable and you cannot tell which one you are agreeing to.
-    plan.staleRecords.slice(0, 15).forEach((r) => lines.push('   ' + r.collection + ' — ' + r.name));
+    plan.staleRecords.slice(0, 15).forEach((r) => lines.push('   ' + r.collection + ' / ' + r.name));
     if (plan.staleRecords.length > 15) lines.push('   …and ' + (plan.staleRecords.length - 15) + ' more');
     lines.push('');
   }
@@ -4042,7 +4042,7 @@ $('#btnTidy').onclick = async () => {
     lines.push([
       plan.art ? plan.art + ' cached image' + (plan.art === 1 ? '' : 's') : '',
       plan.subs ? plan.subs + ' subtitle file' + (plan.subs === 1 ? '' : 's') : '',
-    ].filter(Boolean).join(' and ') + ' belonging to nothing — ' + plan.bytesText + '.');
+    ].filter(Boolean).join(' and ') + ' belonging to nothing (' + plan.bytesText + ').');
     lines.push('');
   }
   if (plan.skipped) {
@@ -4065,7 +4065,7 @@ $('#btnTidy').onclick = async () => {
     lastSig = '';
     paint();
     const d = S.cleaned || {};
-    toast('Tidied — ' + (d.records || 0) + ' position' + (d.records === 1 ? '' : 's') +
+    toast('Tidied: ' + (d.records || 0) + ' position' + (d.records === 1 ? '' : 's') +
       ' and ' + (d.files || 0) + ' file' + (d.files === 1 ? '' : 's') + ' removed.');
   } catch (e) { toast(e.message); }
 };
@@ -4100,7 +4100,7 @@ $('#btnStartOver').onclick = async () => {
   const sure = await uiConfirm({
     title: 'Watch "' + S.active.name + '" again?',
     message: 'Every title goes back to not started, and the queue begins at the first one.\n\n' +
-      'Everything already read and fetched is kept \u2014 resolutions, cast, artwork, and any ' +
+      'Everything already read and fetched is kept: resolutions, cast, artwork, and any ' +
       'subtitle offsets you tuned. Nothing has to be downloaded again.',
     confirmLabel: 'Start it over',
   });
@@ -4110,7 +4110,7 @@ $('#btnStartOver').onclick = async () => {
     dlgSettings.close();
     lastSig = '';
     paint();
-    toast('Back to the beginning \u2014 ' + S.changed + ' ready to watch.');
+    toast('Back to the beginning. ' + S.changed + ' ready to watch.');
   } catch (e) { toast(e.message); }
 };
 

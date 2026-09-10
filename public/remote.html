@@ -361,8 +361,8 @@ function subtitleRow(item) {
   if (!opts.length) return '';
 
   const chosenId = s.choice === undefined || s.choice === 'auto' ? 'auto' : s.choice;
-  const autoLabel = s.activeId === null ? 'Auto \u2014 none'
-    : 'Auto \u2014 ' + ((opts.find((t) => t.id === s.activeId) || {}).label || 'on');
+  const autoLabel = s.activeId === null ? 'Auto: none'
+    : 'Auto: ' + ((opts.find((t) => t.id === s.activeId) || {}).label || 'on');
 
   let h = '<div class="shead">Subtitles</div><select class="subs" id="subPick">';
   h += '<option value="auto"' + (chosenId === 'auto' ? ' selected' : '') + '>' + esc(autoLabel) + '</option>';

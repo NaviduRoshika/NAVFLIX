@@ -3742,7 +3742,7 @@ const server = http.createServer(async (req, res) => {
       const q = buildQueue(c);
       const idx = b.index != null ? Number(b.index) : currentIndex(q);
       if (idx == null || idx < 0) {
-        return json(res, 400, { error: c.name + ' is complete \u2014 nothing left to watch.' });
+        return json(res, 400, { error: c.name + ' is complete. Nothing left to watch.' });
       }
       play(c, idx, b.extraSeconds);
       return json(res, 200, snapshot(local));
