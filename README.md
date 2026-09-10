@@ -556,6 +556,65 @@ Two flavours exist and they behave differently:
 Only Matroska is parsed. A `.mp4` reports no tracks — but dropping a matching
 `.srt` beside any video still works, because VLC loads those by itself.
 
+### Which subtitle wins
+
+A tagged English track wins outright: right language, and in the file, so it
+cannot drift. A `.srt` you put beside the film yourself also wins — you chose it
+deliberately.
+
+A **downloaded** file used to beat a track NAVFLIX had only guessed at, and that
+was wrong. The guess is only ever made when the file holds exactly one track with
+no language on it, which on a Blu-ray rip is almost always the English one, and it
+is in sync by construction. A download is a bet that the subtitle matches this
+particular release — precisely the bet that goes wrong, leaving subtitles that
+drift further out the longer the film runs. Sync cannot be fixed by choosing
+again, so the embedded track wins.
+
+Measured across 1,458 files with a read track list, that change moves exactly one
+of them.
+
+
+## Sound
+
+### Choosing the audio track
+
+Films often carry more than one. The picker sits under the billboard beside the
+subtitles, and only appears when there is a choice to make — one track is the
+normal case and a dropdown of one is furniture. It reads the same Matroska header
+the subtitle list comes from, so it costs no extra work.
+
+```
+AUDIO   Auto | Untagged · 5.1 · E-AC3 | Untagged · stereo · AAC · Pahe.in Encodes
+```
+
+**Auto passes nothing to VLC at all**, leaving its own default in place — a picker
+that changed the sound merely by existing would be a surprise. Only a deliberate
+choice sends a flag. A change lands on the film already playing; going back to
+Auto waits for the next start, because there is no "use your default again"
+command to send a running VLC.
+
+Where a file has both a 5.1 track and a stereo one, it says so: a stereo mix was
+made for two speakers by someone who thought about dialogue, which beats an
+automatic downmix. It stays quiet when the only stereo track is a commentary,
+since recommending that would be worse than saying nothing.
+
+### Even out the volume
+
+Settings → **Even out the volume**, with *Gentle* and *Strong*. Off by default.
+
+Films are mixed for a silent cinema, where a whisper works and an explosion has
+room to startle. A living room has a fridge and small speakers, so you raise the
+volume for the dialogue and the explosion arrives just as far above it. On a TV it
+is worse still: nearly all dialogue lives in the centre channel, and folding six
+channels into two turns that channel down while the effects channels sum together
+— the gap widens exactly where you needed it to close.
+
+This runs VLC's compressor: quiet parts up, loud parts down. VLC's own defaults
+are far too mild to help, so *Gentle* is a 3:1 ratio from −18 dB with 6 dB of
+makeup gain, and *Strong* is 8:1 from −26 dB with 12 dB. Every flag and value was
+checked against VLC's own option list and accepted ranges. It applies the next
+time something starts playing.
+
 
 ## Running it
 
@@ -666,6 +725,15 @@ reports them.
 Drawing the Library means knowing what is in every folder, and it would be easy
 to make that cost a fortune on an external drive. Two things keep it cheap.
 
+**And it stops entirely while you watch.** A full walk of ninety folders is over
+two seconds of head movement on a USB disk, the listing is only cached for eight
+seconds, and the page polls often enough to pay for that walk again and again —
+on the very drive VLC is streaming the film from. The result was a video that
+hitched for a few seconds at a time, on and off, for no visible reason. Nothing
+about the file list can change in a way that matters before the film ends, so
+while a session is running the cached answer is served however old it is and the
+walk waits.
+
 **One directory listing per folder, not one check per file.** Resolving artwork
 by asking the filesystem whether each of six extensions exists, for each of nine
 generic names, twice, once cost 68,594 calls and forty seconds. The listing is
@@ -748,6 +816,62 @@ otherwise.
 Settings → **Erase this collection's progress** is the separate, heavier thing.
 It forgets the folder entirely, that scan data included, and all of it has to be
 read and fetched again. Other collections are untouched either way.
+
+### Backups you can carry
+
+Settings → **Save a backup** writes one JSON file holding every collection,
+position, tag, mark and subtitle offset. **Restore from a backup** reads it back.
+
+Three things are deliberately left out, and the omissions are the point — they
+are what makes a backup a file rather than a credential:
+
+| Left out | Why |
+| --- | --- |
+| The pairing code and phone tokens | Working credentials. Anyone holding a token can drive playback and read the whole library. Re-pairing after a restore is one QR scan. |
+| The TMDB key | Yours, and an API key besides. |
+| Artwork and subtitle caches | Hundreds of megabytes, all re-fetchable, and not ours to redistribute. |
+
+This is also why `data/` is not in git. Committing `state.json` to a repository
+would publish five live remote tokens, the pairing code, and the path of every
+one of your files — permanently, since git does not forget. A backup file has
+none of that, so it can live in a cloud folder or on another disk without care.
+
+Restoring replaces your progress wholesale, so the state being replaced is
+written to `data/backups/before-import-<when>.json` first. Two things are kept
+from the machine you restore **onto** rather than taken from the file: where VLC
+lives, because that differs per machine and is handed to `spawn()` — a file that
+could set it is a file that could run anything — and your phone pairing, because
+your phone is paired with this server and replacing that would drop every device
+for no reason.
+
+The file goes back in through the same migration path an older `state.json`
+takes, so a backup from an earlier version is upgraded rather than trusted as-is.
+
+### Leftovers
+
+Two kinds of litter accumulate, and until now nothing swept either up.
+
+A **saved position outlives its file**: delete or rename a video and its record
+stays behind, holding a resume point for something that is not there. And
+**artwork outlives its record**: remove a collection and its state goes, but the
+posters and subtitles cached under it stay on disk with nothing pointing at them.
+
+Settings → **Look for leftovers** finds both. It shows you exactly what it found
+— every stale position by folder and filename, and how much space the orphaned
+files take — and removes nothing until you agree. Your video files are never
+touched, and artwork and subtitles can always be fetched again.
+
+The one thing it will not do is mistake an unplugged drive for a deleted folder.
+Every record in an unreachable collection *looks* stale, because the files really
+are not there; pruning on that basis would wipe a whole library's progress
+because a cable was out. So a folder it cannot read is skipped entirely, its
+artwork counts as spoken for, and the dialog says how many were left alone.
+
+It also asks the disk directly rather than consulting the scanned queue. Those
+are different questions: the scan ignores anything under 20 MB as a sample or a
+featurette, so a genuine short film is missing from the queue while sitting
+plainly in the folder — and pruning against the queue would have deleted its
+progress.
 
 ### It is looked after for you
 

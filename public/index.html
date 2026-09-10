@@ -895,6 +895,22 @@
       the server does not also throw up a browser tab. Takes effect next start.
     </p>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+    <label class="f">
+      <span>Even out the volume</span>
+      <select id="setEven">
+        <option value="off">Off — as the film was mixed</option>
+        <option value="gentle">Gentle — lift the dialogue a little</option>
+        <option value="strong">Strong — night mode, nothing loud</option>
+      </select>
+    </label>
+    <p class="muted" style="font-size:13px;margin:-8px 0 4px">
+      Films are mixed for a silent cinema, so dialogue sits low and explosions sit
+      high. On a TV it is worse still: nearly all the dialogue lives in the centre
+      channel, and folding six channels into two turns that channel down while the
+      effects add together. This closes the gap — quiet parts up, loud parts down.
+      Takes effect the next time something starts playing.
+    </p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
     <label class="chk"><input type="checkbox" id="setBgScan"> Read file details in the background</label>
     <p class="muted" style="font-size:13px;margin:6px 0 12px">
       Works out resolution, codecs, audio and subtitle tracks and real running time
@@ -941,6 +957,27 @@
       NAVFLIX met it. <b>Start it over</b> puts every episode back to unseen for a
       rewatch, and keeps what has been read and fetched — resolutions, cast,
       artwork and any subtitle offsets you tuned.
+    </p>
+    <h3 class="sec">Backup</h3>
+    <button class="mini" id="btnExport">Save a backup</button>
+    <button class="mini" id="btnImport">Restore from a backup</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+    <p class="muted" style="font-size:13px;margin:8px 0 14px">
+      One file holding every collection, position, tag and subtitle offset — the
+      only part of NAVFLIX that cannot be rebuilt. Keep it anywhere; it carries no
+      pairing code, no tokens and no API key, so it is a file rather than a
+      credential. Artwork and subtitles are left out too, since they can always be
+      fetched again. Restoring replaces your progress, and writes what it replaced
+      into <code>data/backups/</code> first.
+    </p>
+    <h3 class="sec">Storage</h3>
+    <button class="mini" id="btnTidy">Look for leftovers</button>
+    <p class="muted" style="font-size:13px;margin:8px 0 14px">
+      Deleting a video leaves its saved position behind, and removing a folder
+      leaves its cached posters and subtitles on disk. Nothing clears either up.
+      This looks for both and shows you exactly what it found before removing
+      anything — a folder it cannot read is left completely alone, since an
+      unplugged drive looks the same as a deleted one.
     </p>
     <h3 class="sec">Danger zone</h3>
     <button class="mini" id="btnResetDay">Reset today's watched time</button>
@@ -2353,6 +2390,16 @@ const GUIDE = [
       'means both, and each count is what you get by pressing it, so a 0 is a visible dead end. Spelling is ' +
       'normalised, so <i>Anime</i> and <i>anime</i> cannot become two tags that each hide half your shows.'],
     ['Play', 'Press the big <b>Play</b> button on the billboard. VLC opens at the exact second you last stopped.'],
+    ['Dialogue too quiet, explosions too loud', 'Films are mixed for a silent cinema, so a whisper works and an ' +
+      'explosion has room to startle. A living room does not. Worse, on a TV nearly all dialogue lives in the centre ' +
+      'channel, and folding six channels into two turns that channel down while the effects add together. ' +
+      'Settings → <b>Even out the volume</b> runs VLC\'s compressor over it: quiet parts up, loud parts down. ' +
+      'Two strengths, and it applies the next time something starts.'],
+    ['Choosing the audio track', 'Under the billboard, beside the subtitles, whenever the file carries more than ' +
+      'one. A stereo track was mixed for two speakers by someone who thought about dialogue, so it is usually ' +
+      'clearer on a TV than a 5.1 track folded down — and NAVFLIX says so when a file offers both. <b>Auto</b> ' +
+      'leaves VLC to its own default, so nothing changes until you choose. A change lands on the film already ' +
+      'playing; going back to Auto waits for the next start.'],
   ]],
 
   ['modes', 'Two ways to watch', [
@@ -2479,6 +2526,17 @@ const GUIDE = [
     ['Starting over completely', 'Settings → <b>Erase this collection\'s progress</b> forgets the folder entirely, ' +
       'including its resolutions, cast, subtitle offsets and watch log — all of which has to be read and fetched ' +
       'again. For a rewatch you want <b>Start it over</b> instead. Other collections are untouched either way.'],
+    ['Taking a backup', 'Settings → <b>Save a backup</b> writes one file holding every collection, position, tag ' +
+      'and subtitle offset — the only part of NAVFLIX that cannot be rebuilt. It carries no pairing code, no phone ' +
+      'tokens and no API key, so it is a file rather than a credential and can live anywhere. <b>Restore from a ' +
+      'backup</b> reads it back, showing what the file holds before replacing anything and writing what it replaced ' +
+      'into <code>data/backups/</code> first. Your phone stays paired and VLC\'s location on this machine is kept, ' +
+      'since both belong to the machine rather than to the backup.'],
+    ['Clearing out leftovers', 'Deleting a video leaves its saved position behind; removing a folder leaves its ' +
+      'cached posters and subtitles on disk. Settings → <b>Look for leftovers</b> finds both, shows you every one ' +
+      'of them by folder and filename, and removes nothing until you agree. A folder it cannot read is skipped ' +
+      'entirely — an unplugged drive looks exactly like a deleted one, and guessing wrong would throw away the ' +
+      'progress for a whole library. Your video files are never touched.'],
   ]],
 
   ['fix', 'When something looks wrong', [
@@ -2836,6 +2894,7 @@ function render() {
     html += '</div>';                       // .actions
 
     html += subtitleRow(hero);
+    html += audioRow(hero);
     html += syncRow(hero);
     html += '</div></section>';             // .hero-inner, .hero
   }
@@ -2973,6 +3032,33 @@ const KIND_NOTE = {
   commentary: 'for the commentary track',
   signs: 'signs and songs only',
 };
+
+// Only worth showing when there is a choice to make. One audio track is the
+// normal case and a dropdown with a single entry is furniture.
+function audioRow(m) {
+  const a = m.audio;
+  if (!a || a.tracks.length < 2) return '';
+
+  let h = '<div class="subrow"><span class="sublabel">Audio</span>' +
+    '<select class="subsel" onchange="setAudio(' + m.index + ', this.value)">';
+  h += '<option value="auto"' + (a.choice === 'auto' ? ' selected' : '') + '>Auto</option>';
+  a.tracks.forEach((t) => {
+    h += '<option value="' + t.id + '"' + (a.choice === t.id ? ' selected' : '') + '>' +
+      esc(t.label) + (t.def ? ' — default' : '') + '</option>';
+  });
+  h += '</select>';
+
+  // The reason someone comes looking for this control in the first place — but
+  // only when the stereo track is one you would actually want to listen to. On
+  // Pride and Prejudice the sole stereo track is the director's commentary, and
+  // pointing at that as the clearer choice would be worse than saying nothing.
+  const usableStereo = a.tracks.some((t) => t.channels === 2 && !t.commentary);
+  if (usableStereo && a.tracks.some((t) => t.channels > 2)) {
+    h += '<span class="subhint">A stereo track is usually clearer on TV speakers ' +
+      'than a 5.1 one folded down to two.</span>';
+  }
+  return h + '</div>';
+}
 
 // The subtitle picker under the billboard buttons.
 function subtitleRow(m) {
@@ -3198,6 +3284,19 @@ async function stretchSub(index, target) {
     render();
     scrollTo({ top: y, behavior: 'instant' });
     toast('Subtitle timings re-scaled.');
+  } catch (e) { toast(e.message); }
+}
+
+async function setAudio(index, choice) {
+  try {
+    const y = scrollY;
+    S = await post('/api/audio', { index: index, choice: choice });
+    lastSig = '';
+    render();
+    scrollTo({ top: y, behavior: 'instant' });
+    // Switching a running VLC works; going back to Auto does not, because there
+    // is no "use your default again" command to send it.
+    if (S.applied === 'next sitting') toast('Set — it applies the next time this starts.');
   } catch (e) { toast(e.message); }
 }
 
@@ -3674,6 +3773,7 @@ $('#btnSettings').onclick = () => {
   $('#setVlc').value = S.vlcPath;
   $('#setFull').checked = S.fullscreen;
   $('#setOpen').checked = S.openOnStart !== false;
+  $('#setEven').value = S.audioEven || 'off';
   $('#setBgScan').checked = !!(S.background && S.background.scan);
   $('#setBgFetch').checked = !!(S.background && S.background.fetch);
   renderRemoteInfo();
@@ -3841,6 +3941,7 @@ $('#btnSaveSettings').onclick = async () => {
       fullscreen: $('#setFull').checked,
       tmdbKey: $('#setTmdb').value.trim(),
       openOnStart: $('#setOpen').checked,
+      audioEven: $('#setEven').value,
       backgroundScan: $('#setBgScan').checked,
       backgroundFetch: $('#setBgFetch').checked,
       remoteEnabled: $('#setRemote').checked,
@@ -3855,6 +3956,115 @@ $('#btnSaveSettings').onclick = async () => {
     paint();
   } catch (e) { toast(e.message); }
 };
+// Look first, remove second. The list is the point: "tidy up" is exactly the
+// sort of button people press without reading, and this one deletes things.
+// A plain navigation rather than fetch-then-blob: the server already sets the
+// filename in Content-Disposition, and letting the browser do the saving means
+// it lands wherever downloads normally land.
+$('#btnExport').onclick = () => {
+  location.href = '/api/export';
+  toast('Saving a backup… check your downloads.');
+};
+
+$('#btnImport').onclick = () => $('#importFile').click();
+
+$('#importFile').onchange = async () => {
+  const input = $('#importFile');
+  const file = input.files && input.files[0];
+  input.value = '';                     // so choosing the same file twice works
+  if (!file) return;
+
+  let backup;
+  try { backup = JSON.parse(await file.text()); }
+  catch (e) { return toast('That file is not readable JSON.'); }
+
+  let info;
+  try { info = await post('/api/import', { backup: backup }); }
+  catch (e) { return toast(e.message); }
+
+  const when = info.exportedAt ? new Date(info.exportedAt).toLocaleString() : 'an unknown date';
+  const sure = await uiConfirm({
+    title: 'Restore this backup?',
+    message: 'Saved ' + when + '.\n\n' +
+      info.collections + ' collections, ' + info.files.toLocaleString() + ' files, ' +
+      info.watched.toLocaleString() + ' marked watched.\n\n' +
+      'This replaces your current progress entirely. What it replaces is written ' +
+      'into data/backups/ first, so it can be undone by hand.\n\n' +
+      'Your video files are not touched. Your phone stays paired, and VLC’s ' +
+      'location on this machine is kept.',
+    confirmLabel: 'Restore it',
+  });
+  if (!sure) return;
+
+  try {
+    S = await post('/api/import', { backup: backup, apply: true });
+    lastSig = '';
+    paint();
+    const d = S.imported || {};
+    toast('Restored — ' + d.collections + ' collections, ' + (d.files || 0).toLocaleString() + ' files.');
+  } catch (e) { toast(e.message); }
+};
+
+$('#btnTidy').onclick = async () => {
+  const btn = $('#btnTidy');
+  const was = btn.textContent;
+  btn.textContent = 'Looking…';
+  btn.disabled = true;
+  let plan;
+  try { plan = await post('/api/cleanup', {}); }
+  catch (e) { toast(e.message); return; }
+  finally { btn.textContent = was; btn.disabled = false; }
+
+  const nothing = !plan.staleRecords.length && !plan.art && !plan.subs;
+  if (nothing) {
+    return toast(plan.skipped
+      ? 'Nothing to tidy — ' + plan.skipped + ' folder' + (plan.skipped === 1 ? '' : 's') +
+        ' skipped as unreachable.'
+      : 'Nothing to tidy. Everything on disk is spoken for.');
+  }
+
+  const lines = [];
+  if (plan.staleRecords.length) {
+    lines.push(plan.staleRecords.length + ' saved position' +
+      (plan.staleRecords.length === 1 ? '' : 's') + ' for files that are no longer there:');
+    // Shown by folder, because the same filename in two shelves is otherwise
+    // indistinguishable and you cannot tell which one you are agreeing to.
+    plan.staleRecords.slice(0, 15).forEach((r) => lines.push('   ' + r.collection + ' — ' + r.name));
+    if (plan.staleRecords.length > 15) lines.push('   …and ' + (plan.staleRecords.length - 15) + ' more');
+    lines.push('');
+  }
+  if (plan.art || plan.subs) {
+    lines.push([
+      plan.art ? plan.art + ' cached image' + (plan.art === 1 ? '' : 's') : '',
+      plan.subs ? plan.subs + ' subtitle file' + (plan.subs === 1 ? '' : 's') : '',
+    ].filter(Boolean).join(' and ') + ' belonging to nothing — ' + plan.bytesText + '.');
+    lines.push('');
+  }
+  if (plan.skipped) {
+    lines.push(plan.skipped === 1
+      ? '1 folder cannot be read and will be left completely alone.'
+      : plan.skipped + ' folders cannot be read and will be left completely alone.');
+    lines.push('');
+  }
+  lines.push('Your video files are never touched. Artwork and subtitles can be fetched again.');
+
+  const sure = await uiConfirm({
+    title: 'Remove these leftovers?',
+    message: lines.join('\n'),
+    confirmLabel: 'Remove them',
+  });
+  if (!sure) return;
+
+  try {
+    S = await post('/api/cleanup', { apply: true });
+    lastSig = '';
+    paint();
+    const d = S.cleaned || {};
+    toast('Tidied — ' + (d.records || 0) + ' position' + (d.records === 1 ? '' : 's') +
+      ' and ' + (d.files || 0) + ' file' + (d.files === 1 ? '' : 's') + ' removed.');
+  } catch (e) { toast(e.message); }
+};
+
 $('#btnResetDay').onclick = async () => {
   S = await post('/api/reset-day');
   lastSig = '';

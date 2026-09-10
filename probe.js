@@ -29,6 +29,11 @@ const path = require('path');
 const EBML = {
   SEGMENT: 0x18538067, INFO: 0x1549A966, TRACKS: 0x1654AE6B, TRACK_ENTRY: 0xAE,
   VIDEO: 0xE0, AUDIO: 0xE1,
+  // The number the file gives a track, which is what VLC addresses it by. Not
+  // the same as its position in the list, and the difference is the whole
+  // subtitle bug: a file with video, audio and three subtitles numbers them
+  // 1..5, so its first subtitle is number 3 while sitting at position 2.
+  TRACK_NUMBER: 0xD7,
   TRACK_TYPE: 0x83, LANGUAGE: 0x22B59C, LANG_BCP47: 0x22B59D,
   CODEC_ID: 0x86, NAME: 0x536E, FLAG_DEFAULT: 0x88, FLAG_FORCED: 0x55AA,
   PIXEL_W: 0xB0, PIXEL_H: 0xBA, DISPLAY_W: 0x54B0, DISPLAY_H: 0x54BA,
@@ -88,7 +93,8 @@ function ebmlWalk(buf, start, end, entry, out) {
       ebmlWalk(buf, body, stop, entry, out);
     } else if (entry) {
       const s = buf.slice(body, stop);
-      if (id.value === EBML.TRACK_TYPE) entry.type = TRACK_TYPES[ebmlUint(s)] || 'other';
+      if (id.value === EBML.TRACK_NUMBER) entry.number = ebmlUint(s);
+      else if (id.value === EBML.TRACK_TYPE) entry.type = TRACK_TYPES[ebmlUint(s)] || 'other';
       else if (id.value === EBML.LANGUAGE) entry.lang = ebmlStr(s);
       else if (id.value === EBML.LANG_BCP47) entry.lang = ebmlStr(s) || entry.lang;
       else if (id.value === EBML.CODEC_ID) entry.codec = ebmlStr(s);

@@ -321,6 +321,7 @@ function load() {
 
   const fresh = { version: 2, activeId: '', vlcPath: '', vlcPaths: {}, fullscreen: true,
     tmdbKey: '', openOnStart: true, backgroundScan: true, backgroundFetch: true,
+    audioEven: 'off',
     remote: blankRemote(), collections: [] };
   if (!raw) return fresh;
 
@@ -340,6 +341,9 @@ function load() {
       tmdbKey: raw.tmdbKey || '',
       // Absent in older state files, and the old behaviour was to open.
       openOnStart: raw.openOnStart !== false,
+      // off | gentle | strong. Off by default: it changes how everything sounds,
+      // which is not a thing to do to someone without being asked.
+      audioEven: ['gentle', 'strong'].indexOf(raw.audioEven) >= 0 ? raw.audioEven : 'off',
       // Both on unless you turned them off. The second one reaches the network,
       // which is why it is a switch of its own rather than folded into the first.
       backgroundScan: raw.backgroundScan !== false,
@@ -529,10 +533,20 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 const SCAN_TTL = 8000;
 const scanCache = new Map(); // path -> { at, files }
 
+// While a film is playing the drive belongs to VLC. Walking ninety folders costs
+// well over two seconds of head movement on a USB disk, and the page polls often
+// enough to pay that every eight seconds — which is exactly what an intermittent
+// few-second stutter in the video looks like. Nothing about the file list can
+// change in a way that matters before the film ends, so an answer already in hand
+// is served however old it is, and the walk waits.
+function scanTtl() {
+  return session ? Infinity : SCAN_TTL;
+}
+
 function scanLibrary(dir) {
   const now = Date.now();
   const hit = scanCache.get(dir);
-  if (hit && now - hit.at < SCAN_TTL) return hit.files;
+  if (hit && now - hit.at < scanTtl()) return hit.files;
 
   const out = [];
   const walk = (abs, rel, depth) => {
@@ -670,7 +684,9 @@ const shapeCache = new Map(); // collection id -> { at, shape }
 
 function seriesShape(c) {
   const hit = shapeCache.get(c.id);
-  if (hit && Date.now() - hit.at < SCAN_TTL) return hit.shape;
+  // Same lifetime as the listing it is derived from, playback freeze included:
+  // recomputing this would re-read the listing and undo the point of freezing it.
+  if (hit && Date.now() - hit.at < scanTtl()) return hit.shape;
   const shape = computeShape(c);
   shapeCache.set(c.id, { at: Date.now(), shape: shape });
   return shape;
@@ -739,22 +755,34 @@ const subCache = new Map(); // absolute path -> { mtimeMs, size, tracks }
 
 // VLC numbers its streams by the track's position in the file, and that is
 // exactly what --sub-track-id expects. Verified against VLC's reported ids.
+// Bumped whenever what is stored means something different. 2 was a mistake —
+// ids briefly became the file's TrackNumber, which VLC does not use — and 3 puts
+// them back to positions, so every list written under 2 has to be read again.
+const TRACKS_V = 3;
+
 function subtitleTracks(c, rel) {
   const file = path.join(c.path, rel);
   if (!/\.mkv$/i.test(file)) return [];       // only Matroska is parsed here
 
   let st;
   try { st = fs.statSync(file); } catch (e) { return []; }
+  // TRACKS_V changes whenever what is stored means something different. It went
+  // to 2 when ids stopped being positions and became the file's own track
+  // numbers: every list read before that names its tracks wrongly, and mtime and
+  // size cannot tell, because the file did not change — the reading of it did.
   const hit = subCache.get(file);
-  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.tracks;
+  if (hit && hit.v === TRACKS_V && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.tracks;
 
   // Remembered from last time. Working this out means opening the video and
   // reading a megabyte of it, so a whole season costs real seconds on a USB
   // disk — and the answer only changes if the file itself does. Size and mtime
   // say whether it has.
   const saved = (c.progress && c.progress[rel] && c.progress[rel].tracks) || null;
-  if (saved && saved.mtimeMs === st.mtimeMs && saved.size === st.size) {
-    subCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, tracks: saved.list });
+  if (saved && saved.v === TRACKS_V && saved.mtimeMs === st.mtimeMs && saved.size === st.size) {
+    subCache.set(file, {
+      v: TRACKS_V, mtimeMs: st.mtimeMs, size: st.size,
+      tracks: saved.list, audio: saved.audio,
+    });
     return saved.list;
   }
 
@@ -766,7 +794,17 @@ function subtitleTracks(c, rel) {
     if (t.type !== 'subtitle') return;
     const lang = (t.lang || '').toLowerCase();
     tracks.push({
-      id: position,                 // == VLC stream id == --sub-track-id
+      // Position in the track list, and NOT the file's own TrackNumber.
+      //
+      // Those look interchangeable and are not. A file with video, audio and
+      // three subtitles numbers its tracks 1..5, so the first subtitle carries
+      // TrackNumber 3 while sitting at position 2 — and VLC's --sub-track-id
+      // wants the position. Switching to TrackNumber here was tested against
+      // Captain America and produced the Indonesian subtitle: asking for 3 got
+      // the track numbered 4. The number is parsed and kept anyway, because it
+      // is a real fact about the file, but it is not what VLC is asking for.
+      id: position,
+      number: t.number,
       lang: t.lang || '',
       name: t.name || '',
       codec: t.codec || '',
@@ -776,12 +814,124 @@ function subtitleTracks(c, rel) {
     });
   });
 
-  subCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, tracks: tracks });
+  // The audio tracks come out of the same read, so they are kept in the same
+  // place. Opening the file costs a megabyte off a USB disk; doing it twice to
+  // answer two questions about one pass would be careless.
+  const audio = [];
+  all.forEach((t, position) => {
+    if (t.type !== 'audio') return;
+    audio.push({
+      id: position,               // same numbering as the subtitle ids above
+      number: t.number,
+      lang: t.lang || '',
+      name: t.name || '',
+      codec: t.codec || '',
+      channels: Number(t.channels) || 0,
+      def: !!t.def,
+    });
+  });
+
+  subCache.set(file, { v: TRACKS_V, mtimeMs: st.mtimeMs, size: st.size, tracks: tracks, audio: audio });
   if (c.progress) {
-    rec(c, rel).tracks = { mtimeMs: st.mtimeMs, size: st.size, list: tracks };
+    rec(c, rel).tracks = { v: TRACKS_V, mtimeMs: st.mtimeMs, size: st.size, list: tracks, audio: audio };
     save();
   }
   return tracks;
+}
+
+// The audio half of the same cache entry. A file read before this existed has a
+// list of subtitles and no audio at all; `undefined` there means "not looked at",
+// which is the one case worth re-reading for, and an empty array means "looked,
+// found none". Distinguishing them is what stops a silent file being reopened on
+// every single request.
+function audioTracks(c, rel) {
+  const file = path.join(c.path, rel);
+  if (!/\.mkv$/i.test(file)) return [];
+
+  let st;
+  try { st = fs.statSync(file); } catch (e) { return []; }
+
+  const hit = subCache.get(file);
+  if (hit && hit.v === TRACKS_V && hit.mtimeMs === st.mtimeMs && hit.size === st.size && hit.audio) return hit.audio;
+
+  const saved = (c.progress && c.progress[rel] && c.progress[rel].tracks) || null;
+  if (saved && saved.v === TRACKS_V && saved.mtimeMs === st.mtimeMs && saved.size === st.size && saved.audio) {
+    return saved.audio;
+  }
+
+  // Neither cache knows the audio, which means this file was read before audio
+  // was collected. subtitleTracks would happily answer from that same stale
+  // entry and never open the file, so the entry has to go first — otherwise the
+  // picker stays empty forever on every file already in the library.
+  subCache.delete(file);
+  if (c.progress && c.progress[rel] && c.progress[rel].tracks) delete c.progress[rel].tracks;
+
+  subtitleTracks(c, rel);      // one read now fills in both halves
+  const now = subCache.get(file);
+  return (now && now.audio) || [];
+}
+
+// Matroska stores codecs as "A_AAC" or "A_MPEG/L3", which is the container's
+// business and not something to show anyone. Anything unrecognised still comes
+// out tidier than it went in rather than being dropped.
+const AUDIO_CODEC_NAMES = {
+  A_AAC: 'AAC', A_AC3: 'AC3', A_EAC3: 'E-AC3', A_DTS: 'DTS',
+  A_TRUEHD: 'TrueHD', A_FLAC: 'FLAC', A_OPUS: 'Opus', A_VORBIS: 'Vorbis',
+  A_PCM: 'PCM', A_MPEG: 'MP3',
+};
+
+function audioCodecName(codec) {
+  const short = String(codec || '').toUpperCase().split('/')[0];
+  return AUDIO_CODEC_NAMES[short] || short.replace(/^A_/, '') || String(codec || '');
+}
+
+// "English · 5.1 · AC3", and enough of a fallback that a nameless track is still
+// distinguishable from the one below it.
+function audioLabel(t) {
+  const bits = [];
+  bits.push(probe.langName(t.lang) || (t.lang ? t.lang : 'Untagged'));
+  if (t.channels === 1) bits.push('mono');
+  else if (t.channels === 2) bits.push('stereo');
+  else if (t.channels > 2) bits.push((t.channels - 1) + '.1');
+  if (t.codec) bits.push(audioCodecName(t.codec));
+  if (t.name) bits.push(t.name);
+  return bits.join(' \u00b7 ');
+}
+
+// What the picker shows, and what play() should ask VLC for.
+//
+// Auto deliberately passes no flag at all: VLC's own default is what has always
+// happened, and a picker that changes the sound merely by existing would be a
+// surprise. Only an explicit choice sends anything.
+function audioFor(c, rel) {
+  const tracks = audioTracks(c, rel);
+  const saved = (c.progress && c.progress[rel] && c.progress[rel].audio);
+  const counts = {};
+  tracks.forEach((t) => { const l = audioLabel(t); counts[l] = (counts[l] || 0) + 1; });
+
+  const options = tracks.map((t) => {
+    const l = audioLabel(t);
+    return {
+      id: t.id,
+      label: counts[l] > 1 ? l + ' \u00b7 track ' + t.id : l,
+      channels: t.channels,
+      def: t.def,
+      // Releases label these in the track name and nowhere else, so the name is
+      // the only thing there is to go on. It matters because a commentary is
+      // very often the stereo track sitting beside a 5.1 one, and that is
+      // exactly the shape the picker would otherwise recommend.
+      commentary: /\bcommentar(y|ies)\b|\bcommentary\b|\bdirector'?s? cut\b/i.test(t.name || ''),
+    };
+  });
+
+  const chosen = options.some((o) => o.id === saved) ? saved : undefined;
+  const active = chosen !== undefined ? options.find((o) => o.id === chosen) : null;
+  return {
+    tracks: options,
+    choice: chosen === undefined ? 'auto' : chosen,
+    activeId: chosen === undefined ? null : chosen,
+    activeLabel: active ? active.label : null,
+  };
 }
 
 function isEnglish(t) {
@@ -934,10 +1084,27 @@ function subsFor(c, rel) {
     untagged: false, english: true, external: true, origin: x.origin,
   })));
 
-  // A file you supplied or fetched beats a poor embedded match, but a proper
-  // embedded English track still wins — it is guaranteed to be in sync.
+  // What beats what, and why.
+  //
+  // A tagged English track wins outright: it is the right language and, being in
+  // the file, it is guaranteed to be in sync.
+  //
+  // A file you put beside the film yourself also wins over a guess — you chose
+  // it deliberately, and that is worth more than any inference here.
+  //
+  // A *downloaded* file used to beat a guessed track too, and that was wrong. A
+  // guess is only ever made when the file holds exactly one track with no
+  // language on it, which on a Blu-ray rip is almost always the English one —
+  // and it is in sync by construction. A download is a bet that the subtitle
+  // matches this particular release, which is precisely the bet that goes wrong:
+  // the film plays with subtitles that drift further out the longer it runs.
+  // Sync is the property that cannot be fixed by choosing again, so it wins.
+  const sidecar = external.reduce(
+    (found, x, i) => (x.origin === 'beside the film' ? i : found), -1);
+
   let autoId = auto ? auto.id : null;
-  if ((!auto || auto.guess) && external.length) autoId = 'x' + (external.length - 1);
+  if (!auto && external.length) autoId = 'x' + (external.length - 1);
+  else if (auto && auto.guess && sidecar >= 0) autoId = 'x' + sidecar;
 
   let activeId = autoId;
   if (saved === 'off') activeId = null;
@@ -1697,6 +1864,217 @@ async function runArtJob(c, force) {
   }
 }
 
+// ------------------------------------------------------------ backup and restore
+//
+// state.json is the one thing here that cannot be rebuilt, and it lives on a
+// removable disk. This writes it out as a single file you can put anywhere.
+//
+// Three things are deliberately left out, and the omissions are the reason a
+// backup can be kept somewhere a copy of state.json could not.
+//
+//   remote.pin and remote.tokens  Working credentials for the phone remote.
+//                                 Anyone holding a token can drive playback and
+//                                 read the whole library. A backup that carries
+//                                 them is a credential you have to guard; one
+//                                 that does not is just a file. Re-pairing after
+//                                 a restore is one QR scan.
+//   tmdbKey                       Yours, and an API key besides.
+//   The artwork and subtitle caches. Hundreds of megabytes, all re-fetchable,
+//                                 and not ours to redistribute.
+const BACKUP_FORMAT = 1;
+
+function exportState() {
+  const out = JSON.parse(JSON.stringify(onDisk(state)));
+  delete out.tmdbKey;
+  out.remote = { enabled: !!(state.remote && state.remote.enabled), pin: '', tokens: [] };
+  return {
+    navflix: BACKUP_FORMAT,
+    exportedAt: new Date().toISOString(),
+    collections: out.collections.length,
+    files: out.collections.reduce((t, c) => t + Object.keys(c.progress || {}).length, 0),
+    state: out,
+  };
+}
+
+// What a file is worth before you agree to it: enough to tell a real backup from
+// a wrong file, and enough to see it is the one you meant.
+function describeBackup(body) {
+  if (!body || body.navflix !== BACKUP_FORMAT) return null;
+  const st = body.state;
+  if (!st || !Array.isArray(st.collections)) return null;
+  return {
+    exportedAt: body.exportedAt || null,
+    collections: st.collections.length,
+    files: st.collections.reduce((t, c) => t + Object.keys(c.progress || {}).length, 0),
+    watched: st.collections.reduce(
+      (t, c) => t + Object.values(c.progress || {}).filter((r) => r && r.done).length, 0),
+  };
+}
+
+// Restoring replaces your progress wholesale, so the state being replaced is
+// written to the backups folder first under its own name. If the file turns out
+// to be the wrong one, the thing it overwrote is still there.
+function importState(body) {
+  const info = describeBackup(body);
+  if (!info) throw new Error('That is not a NAVFLIX backup file.');
+
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    fs.writeFileSync(
+      path.join(BACKUP_DIR, 'before-import-' + stamp + '.json'),
+      JSON.stringify(onDisk(state), null, 2)
+    );
+  } catch (e) { /* best effort; the import is still worth doing */ }
+
+  const incoming = body.state;
+
+  // Kept from this machine rather than taken from the file:
+  //
+  //   vlcPath / vlcPaths  Where VLC lives differs per machine, and this one is
+  //                       handed to spawn(). A file that could set it is a file
+  //                       that could run anything, which is not a property a
+  //                       backup should have.
+  //   remote              Your phone is paired with THIS server. Replacing the
+  //                       pairing with an empty one from the backup would drop
+  //                       every paired device for no reason.
+  incoming.vlcPath = state.vlcPath;
+  incoming.vlcPaths = state.vlcPaths;
+  incoming.remote = state.remote;
+  if (!incoming.tmdbKey) incoming.tmdbKey = state.tmdbKey;
+
+  // Back through load()'s own migration, so an older backup is upgraded exactly
+  // as an older state file would be rather than trusted as-is.
+  fs.writeFileSync(STATE_FILE, JSON.stringify(incoming, null, 2));
+  state = load();
+
+  scanCache.clear();
+  shapeCache.clear();
+  artCache.clear();
+  stampCache.clear();
+  subCache.clear();
+  saveNow();
+  wakeSweep();
+  return info;
+}
+
+// ---------------------------------------------------------------- tidying up
+//
+// Two kinds of litter accumulate, and neither was ever swept.
+//
+// A progress record outlives the file it describes: delete or rename a video and
+// its record stays, holding a position for something that is not there. Harmless
+// — the queue is built from the disk, not from records — but it accretes.
+//
+// Cached artwork and subtitles outlive the record they belong to. Remove a
+// collection and its state goes, but the posters keyed to it stay on disk with
+// nothing left to point at them, and nothing ever deletes them.
+//
+// The one thing this must never do is mistake an unplugged drive for a deleted
+// folder. Every record in an unreachable collection looks stale — the files
+// really are not there — and pruning on that basis would wipe the progress for a
+// whole library because a cable was out. So a collection that cannot be read is
+// skipped entirely, and its artwork counts as spoken for.
+function cleanupPlan() {
+  const staleRecords = [];      // { id, collection, name, rel }
+  const keep = {};              // basename -> true, for art and subs alike
+  let skipped = 0;
+
+  for (const c of state.collections) {
+    let reachable = false;
+    try { reachable = !!c.path && fs.existsSync(c.path); } catch (e) { reachable = false; }
+
+    const key = (rel) => crypto.createHash('sha1').update(c.id + '|' + rel).digest('hex');
+    keep[key('__show__') + '.jpg'] = true;
+    keep[key('__show__') + '-bg.jpg'] = true;
+
+    const rels = Object.keys(c.progress || {});
+
+    if (!reachable) {
+      // Unreadable: keep every record and everything filed under it.
+      skipped++;
+      rels.forEach((rel) => {
+        keep[key(rel) + '.jpg'] = true;
+        keep[key(rel) + '-bg.jpg'] = true;
+        keep[key(rel) + '.srt'] = true;
+        keep[key(rel) + '.srt.orig'] = true;
+      });
+      continue;
+    }
+
+    // Asked of the disk directly, one record at a time, rather than by checking
+    // against the scanned queue. The queue is not the same question: scanLibrary
+    // skips anything under 20 MB as a sample or a featurette, so a real short
+    // that is still sitting there does not appear in it. Pruning on that basis
+    // would delete the progress for a file you can see in the folder.
+    const present = (rel) => {
+      try { return fs.existsSync(path.join(c.path, rel.split('/').join(path.sep))); }
+      catch (e) { return true; }   // unreadable is not the same as absent
+    };
+
+    rels.forEach((rel) => {
+      if (present(rel)) {
+        keep[key(rel) + '.jpg'] = true;
+        keep[key(rel) + '-bg.jpg'] = true;
+        keep[key(rel) + '.srt'] = true;
+        keep[key(rel) + '.srt.orig'] = true;
+      } else {
+        // Addressed by id, not by name: two folders may be called the same
+        // thing, and deleting from the wrong one would be silent.
+        staleRecords.push({ id: c.id, collection: c.name, rel: rel, name: rel.split('/').pop() });
+      }
+    });
+  }
+
+  const listOrphans = (dir) => {
+    let files = [];
+    try { files = fs.readdirSync(dir); } catch (e) { return []; }
+    const out = [];
+    for (const f of files) {
+      if (keep[f]) continue;
+      let size = 0;
+      try { size = fs.statSync(path.join(dir, f)).size; } catch (e) { continue; }
+      out.push({ file: f, size: size });
+    }
+    return out;
+  };
+
+  const art = listOrphans(ART_DIR);
+  const subs = listOrphans(SUB_DIR);
+  const bytes = art.concat(subs).reduce((t, f) => t + f.size, 0);
+
+  return {
+    staleRecords: staleRecords,
+    art: art.length,
+    subs: subs.length,
+    bytes: bytes,
+    bytesText: niceSize(bytes),
+    skipped: skipped,
+    _artFiles: art.map((f) => f.file),
+    _subFiles: subs.map((f) => f.file),
+  };
+}
+
+function runCleanup() {
+  const plan = cleanupPlan();
+
+  for (const r of plan.staleRecords) {
+    const c = state.collections.find((x) => x.id === r.id);
+    if (c && c.progress) delete c.progress[r.rel];
+  }
+  let removed = 0;
+  const drop = (dir, files) => files.forEach((f) => {
+    try { fs.unlinkSync(path.join(dir, f)); removed++; } catch (e) { /* already gone */ }
+  });
+  drop(ART_DIR, plan._artFiles);
+  drop(SUB_DIR, plan._subFiles);
+
+  artCache.clear();
+  stampCache.clear();
+  saveNow();
+  return { records: plan.staleRecords.length, files: removed, bytesText: plan.bytesText };
+}
+
 // ------------------------------------------------------------ background work
 //
 // Details and Get artwork are both deliberate, per-collection, and started by
@@ -2345,6 +2723,7 @@ function buildQueue(c, withSubs) {
       artTried: !!r.artTried,
       needsArt: !artComplete(c, f.rel),
       subs: withSubs ? subsFor(c, f.rel) : null,
+      audio: withSubs ? audioFor(c, f.rel) : null,
     };
   });
 }
@@ -2434,6 +2813,22 @@ function play(c, index, extraSeconds) {
   const httpPort = 9911 + Math.floor(Math.random() * 60);
   const password = 'ep' + Math.random().toString(36).slice(2, 10);
 
+  // Cinema mixes carry an enormous dynamic range: a whisper works because the
+  // room is silent, and an explosion has headroom to be startling. A living room
+  // has a fridge and speakers the size of a matchbox, so the dialogue disappears
+  // and the explosion is punishing. Worse, on a stereo TV the centre channel —
+  // where nearly all the dialogue lives — is attenuated as six channels are
+  // folded into two, while the effects channels sum together. The gap widens
+  // exactly where you needed it to close.
+  //
+  // VLC's compressor closes it: quiet parts up, loud parts down. Its own
+  // defaults are far too mild to help, hence the values here.
+  const EVEN = {
+    gentle: { threshold: -18, ratio: 3, attack: 25, release: 250, makeup: 6 },
+    strong: { threshold: -26, ratio: 8, attack: 15, release: 200, makeup: 12 },
+  };
+  const even = EVEN[state.audioEven];
+
   const args = [
     file,
     '--start-time=' + start,
@@ -2463,6 +2858,23 @@ function play(c, index, extraSeconds) {
 
   // Only cap the session when there is a daily limit to respect.
   if (!whole) args.push('--stop-time=' + stop);
+
+  // Only when you have picked one. Auto stays out of the way entirely.
+  const wantAudio = (rec(c, item.rel) || {}).audio;
+  if (wantAudio !== undefined && audioTracks(c, item.rel).some((t) => t.id === wantAudio)) {
+    args.push('--audio-track-id=' + wantAudio);
+  }
+
+  if (even) {
+    args.push('--audio-filter=compressor');
+    args.push('--compressor-rms-peak=0');            // 0 = RMS, which tracks speech
+    args.push('--compressor-attack=' + even.attack);
+    args.push('--compressor-release=' + even.release);
+    args.push('--compressor-threshold=' + even.threshold);
+    args.push('--compressor-ratio=' + even.ratio);
+    args.push('--compressor-knee=2.5');
+    args.push('--compressor-makeup-gain=' + even.makeup);
+  }
 
   if (state.fullscreen) args.push('--fullscreen');
 
@@ -2547,6 +2959,17 @@ function applySubLive(c, rel, choice) {
   if (target.off) { vlcCommand('subtitle_track', { val: '0' }); return 'now'; }
   if (target.file) return 'next sitting';       // an external file, set at launch
   vlcCommand('subtitle_track', { val: String(target.track) });
+  return 'now';
+}
+
+// Same interface, same numbering as the subtitle switch above — which was the
+// one verified by experiment rather than assumed, so audio inherits a tested
+// convention rather than a guessed one. Auto cannot be applied to a running
+// VLC (there is no "go back to your default" command), so it waits.
+function applyAudioLive(c, rel, choice) {
+  if (!session || session.collectionId !== c.id || session.rel !== rel) return 'not playing';
+  if (choice === 'auto') return 'next sitting';
+  vlcCommand('audio_track', { val: String(choice) });
   return 'now';
 }
 
@@ -2870,6 +3293,7 @@ function snapshot(local) {
     fullscreen: state.fullscreen,
     tmdbKey: state.tmdbKey || '',
     openOnStart: state.openOnStart !== false,
+    audioEven: state.audioEven || 'off',
     background: {
       scan: state.backgroundScan !== false,
       fetch: state.backgroundFetch !== false,
@@ -2973,6 +3397,7 @@ const MIME = {
 const REMOTE_ALLOWED = new Set([
   '/api/state', '/api/art', '/api/play', '/api/stop', '/api/mark',
   '/api/collections/select', '/api/subs', '/api/subs/next', '/api/subs/delay',
+  '/api/audio',
   '/api/vlc/pause', '/api/vlc/seek', '/api/vlc/volume', '/api/remote/unpair',
 ]);
 
@@ -3218,6 +3643,10 @@ const server = http.createServer(async (req, res) => {
       if (b.vlcPath != null) rememberVlc(String(b.vlcPath).trim());
       if (b.tmdbKey != null) state.tmdbKey = String(b.tmdbKey).trim();
       if (b.openOnStart != null) state.openOnStart = !!b.openOnStart;
+      if (b.audioEven != null) {
+        const want = String(b.audioEven);
+        state.audioEven = ['gentle', 'strong'].indexOf(want) >= 0 ? want : 'off';
+      }
       if (b.backgroundScan != null) { state.backgroundScan = !!b.backgroundScan; wakeSweep(); }
       if (b.backgroundFetch != null) { state.backgroundFetch = !!b.backgroundFetch; wakeSweep(); }
       if (b.remoteEnabled != null) {
@@ -3394,6 +3823,25 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, Object.assign(snapshot(local), { applied: when }));
     }
 
+    if (p === '/api/audio' && req.method === 'POST') {
+      const b = await readBody(req);
+      const c = target(b);
+      const item = buildQueue(c)[Number(b.index)];
+      if (!item) return json(res, 400, { error: 'Unknown episode.' });
+      const r = rec(c, item.rel);
+      if (b.choice === 'auto') delete r.audio;
+      else {
+        const want = Number(b.choice);
+        if (!audioTracks(c, item.rel).some((t) => t.id === want)) {
+          return json(res, 400, { error: 'That audio track is not in this file.' });
+        }
+        r.audio = want;
+      }
+      saveNow();
+      const when = applyAudioLive(c, item.rel, b.choice === 'auto' ? 'auto' : Number(b.choice));
+      return json(res, 200, Object.assign(snapshot(local), { applied: when }));
+    }
+
     if (p === '/api/subs' && req.method === 'POST') {
       const b = await readBody(req);
       const c = target(b);
@@ -3502,6 +3950,49 @@ const server = http.createServer(async (req, res) => {
       c.day = { key: dayKey(), secondsWatched: 0 };
       saveNow();
       return json(res, 200, snapshot(local));
+    }
+
+    // Two calls on purpose. The first only looks and reports; nothing is removed
+    // until you have seen the list and asked for it, because "tidy up" is the
+    // sort of button people press without reading.
+    // Local only, like every other endpoint that can rewrite the library — it
+    // is not in REMOTE_ALLOWED, so a paired phone gets 403.
+    if (p === '/api/export') {
+      const body = JSON.stringify(exportState(), null, 2);
+      const name = 'navflix-' + dayKey() + '.json';
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Disposition': 'attachment; filename="' + name + '"',
+        'Cache-Control': 'no-store',
+      });
+      return res.end(body);
+    }
+
+    if (p === '/api/import' && req.method === 'POST') {
+      const b = await readBody(req);
+      // Looking and applying are separate, so the dialog can say what the file
+      // holds before anything is replaced.
+      if (b.apply !== true) {
+        const info = describeBackup(b.backup);
+        if (!info) return json(res, 400, { error: 'That is not a NAVFLIX backup file.' });
+        return json(res, 200, info);
+      }
+      let info;
+      try { info = importState(b.backup); }
+      catch (e) { return json(res, 400, { error: e.message }); }
+      return json(res, 200, Object.assign(snapshot(local), { imported: info }));
+    }
+
+    if (p === '/api/cleanup' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (b.apply !== true) {
+        const plan = cleanupPlan();
+        delete plan._artFiles;
+        delete plan._subFiles;
+        return json(res, 200, plan);
+      }
+      const done = runCleanup();
+      return json(res, 200, Object.assign(snapshot(local), { cleaned: done }));
     }
 
     if (p === '/api/reset-all' && req.method === 'POST') {

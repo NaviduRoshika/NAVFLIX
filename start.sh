@@ -8,11 +8,30 @@ cd "$(dirname "$0")" || exit 1
 # --- find node -------------------------------------------------------------
 # A node carried in the app folder wins, so a portable drive runs on a machine
 # with nothing installed.
+#
+# One folder cannot hold two platforms' binaries, so the Windows build lives in
+# runtime/node/ (node.exe) and the Linux one in runtime/node-linux/. Looking only
+# in runtime/node/ meant the Linux build was carried around and never once used.
+# runtime/node/ is still searched last, as the place to drop any build by hand.
+case "$(uname -s 2>/dev/null || echo Linux)" in
+  Darwin) BUNDLES="./runtime/node-mac/bin/node ./runtime/node-darwin/bin/node ./runtime/node/bin/node ./runtime/node/node" ;;
+  *)      BUNDLES="./runtime/node-linux/bin/node ./runtime/node/bin/node ./runtime/node/node" ;;
+esac
+
 NODE=""
-if [ -x "./runtime/node/bin/node" ]; then
-  NODE="./runtime/node/bin/node"
-elif [ -x "./runtime/node/node" ]; then
-  NODE="./runtime/node/node"
+BUNDLED=""
+for candidate in $BUNDLES; do
+  [ -f "$candidate" ] || continue
+  [ -n "$BUNDLED" ] || BUNDLED="$candidate"     # remember the first that is there
+  if [ -x "$candidate" ]; then NODE="$candidate"; break; fi
+done
+
+# A portable drive is almost always NTFS or exFAT, and neither stores a Unix
+# permission bit — so a perfectly good binary arrives without its execute flag.
+# Asking for it back costs nothing and usually works.
+if [ -z "$NODE" ] && [ -n "$BUNDLED" ]; then
+  chmod +x "$BUNDLED" 2>/dev/null
+  [ -x "$BUNDLED" ] && NODE="$BUNDLED"
 fi
 
 if [ -z "$NODE" ]; then
@@ -34,6 +53,28 @@ if [ -z "$NODE" ]; then
   done
 fi
 
+# The binary is present and sound, but the filesystem will not let anything on it
+# be executed at all — an NTFS mount with fmask set, or plain noexec. chmod cannot
+# argue with that, so copy it somewhere that will run it. Once, then remembered.
+if [ -z "$NODE" ] && [ -n "$BUNDLED" ]; then
+  CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/navflix"
+  # A stale copy is worse than none: if the one on the drive has been replaced,
+  # its size will differ and the cached one is thrown away rather than trusted.
+  if [ -x "$CACHE/node" ] \
+     && [ "$(wc -c < "$CACHE/node" 2>/dev/null | tr -d ' ')" != "$(wc -c < "$BUNDLED" 2>/dev/null | tr -d ' ')" ]; then
+    rm -f "$CACHE/node"
+  fi
+  if [ ! -x "$CACHE/node" ]; then
+    echo
+    echo "  This drive will not run programs directly, so the Node that came with"
+    echo "  NAVFLIX is being copied to $CACHE."
+    echo "  About 110 MB, once — after this it starts straight away."
+    echo
+    mkdir -p "$CACHE" && cp "$BUNDLED" "$CACHE/node" && chmod +x "$CACHE/node"
+  fi
+  [ -x "$CACHE/node" ] && NODE="$CACHE/node"
+fi
+
 if [ -z "$NODE" ]; then
   echo
   echo "  Node.js was not found."
@@ -44,7 +85,10 @@ if [ -z "$NODE" ]; then
   echo "    macOS         :  brew install node"
   echo "    Any platform  :  https://nodejs.org"
   echo
-  echo "  Or drop a node binary at  ./runtime/node/bin/node  and it will be used."
+  echo "  Or drop a node binary in the app folder and it will be used:"
+  echo "    Linux :  ./runtime/node-linux/bin/node"
+  echo "    macOS :  ./runtime/node-mac/bin/node"
+  echo "    Either:  ./runtime/node/bin/node"
   echo
   exit 1
 fi
