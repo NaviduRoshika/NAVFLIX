@@ -1560,6 +1560,10 @@ async function runSubJob(c, item) {
   subJob = { collectionId: c.id, rel: item.rel, title: item.title, running: true, note: 'identifying film', error: null };
   try {
     await fetchSubtitle(c, item);
+    // Fetched while the film is on screen: hand it to the VLC that is already
+    // playing. Waiting for the next sitting is no use to someone watching a film
+    // they cannot follow.
+    subJob.applied = applySubLive(c, item.rel, 'auto');
     subJob.note = 'done';
   } catch (e) {
     subJob.error = e.message || String(e);
@@ -3369,7 +3373,12 @@ function applySubLive(c, rel, choice) {
 
   const target = subTarget(c, rel);
   if (target.off) { vlcCommand('subtitle_track', { val: '0' }); return 'now'; }
-  if (target.file) return 'next sitting';       // an external file, set at launch
+  // A file rather than a track inside the video: downloaded, or sitting next to
+  // the film. VLC takes one while it is playing, and turns it on, which is the
+  // whole point of fetching a subtitle in the middle of a film. This used to
+  // answer "next sitting" and do nothing, so a download during a film looked
+  // like it had failed.
+  if (target.file) { vlcCommand('addsubtitle', { val: target.file }); return 'now'; }
   vlcCommand('subtitle_track', { val: String(target.track) });
   return 'now';
 }

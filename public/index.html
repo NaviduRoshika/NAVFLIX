@@ -1472,7 +1472,7 @@ function signature() {
     q: A && A.queue ? A.queue.map((m) => [m.done, Math.round(m.position / 30), Math.round(m.duration), !!m.art, !!m.backdrop, !!m.artTried, m.subs ? m.subs.activeId : null, m.subs ? m.subs.choice : null,
       m.subs ? m.subs.delayMs : 0, m.subs ? m.subs.pick : 0, m.subs ? m.subs.stretched : 1]) : null,
     j: S.artJob ? [S.artJob.running, S.artJob.done, S.artJob.found, S.artJob.failed] : null,
-    sj: S.subJob ? [S.subJob.rel, S.subJob.running, S.subJob.note, S.subJob.error] : null,
+    sj: S.subJob ? [S.subJob.rel, S.subJob.running, S.subJob.note, S.subJob.error, S.subJob.applied] : null,
     b: A ? A.sittingLength : null,
     f: A ? !!A.fullMode : null,
     m: A ? A.missing : null,
@@ -3750,11 +3750,18 @@ function subtitleRow(m) {
   }
   const jobErr = (jobHere && !job.running && job.error)
     ? '<span class="subhint" style="color:#ff9b90">' + esc(job.error) + '</span>' : '';
+  // Downloading one during a film used to end in silence: the file was fetched
+  // and nothing appeared on screen until the next sitting. It is handed to the
+  // running VLC now, and either way this says which happened.
+  const jobDone = (jobHere && !job.running && !job.error && job.applied)
+    ? '<span class="subhint">' + (job.applied === 'now'
+      ? 'Downloaded, and switched on in what is playing.'
+      : 'Downloaded. It is used the next time this plays.') + '</span>' : '';
 
   if (!s.tracks.length) {
     return '<div class="subrow"><span class="subhint">' +
       'No subtitles in this file. Download one, or drop a matching <b>.srt</b> beside it' +
-      '</span>' + getBtn + jobErr + '</div>';
+      '</span>' + getBtn + jobErr + jobDone + '</div>';
   }
 
   let h = '<div class="subrow"><span class="sublabel">Subtitles</span>' +
@@ -3782,7 +3789,7 @@ function subtitleRow(m) {
   } else if (s.activeId === null) {
     h += '<span class="subhint">none will be shown</span>';
   }
-  return h + jobErr + '</div>';
+  return h + jobErr + jobDone + '</div>';
 }
 
 async function getSubs(index) {
