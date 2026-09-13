@@ -76,6 +76,15 @@ everything else counts as not watched, so the pair always adds up to the whole
 shelf; each button's count is what you would get by pressing it. Pressing the one
 already on turns it off.
 
+**Hide unavailable** joins that row whenever a drive is not plugged in, with the
+number of folders on it. Those folders read *Folder not found*, and with an
+external disk unplugged they can be most of the page, so this takes them out of
+the grid and out of every count; the line under the title still says how many are
+hidden. Unlike the filters it is remembered between launches, because an
+unplugged drive is a fact about your week rather than a question you are asking
+this minute. Nothing is forgotten: plug the drive back in and they return with
+their progress.
+
 ### Tags
 
 Your own labels, on a second row that appears once you have made some: *anime*,

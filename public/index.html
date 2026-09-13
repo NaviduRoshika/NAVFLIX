@@ -1529,6 +1529,13 @@ let libStatus = 'any';
 let libSort = (function () {
   try { return localStorage.getItem('navflix.libSort') || 'name'; } catch (e) { return 'name'; }
 })();
+// Folders whose drive is not plugged in. Remembered for the same reason the
+// order is: an unplugged disk is a fact about your week, not a question you are
+// asking this minute, and hiding them again on every launch would be the point
+// missed.
+let libHideMissing = (function () {
+  try { return localStorage.getItem('navflix.libHideMissing') === '1'; } catch (e) { return false; }
+})();
 // 'folders' is the Library as it has always been. 'films' throws the folders
 // away and lists what is inside them, which is the question you are asking when
 // you cannot remember which shelf a film is on.
@@ -1623,6 +1630,12 @@ function toggleLibTag(t) {
 
 function setLibStatus(v) {
   libStatus = libStatus === v ? 'any' : v;
+  renderLibrary();
+}
+
+function setLibHideMissing(on) {
+  libHideMissing = on;
+  try { localStorage.setItem('navflix.libHideMissing', on ? '1' : '0'); } catch (e) { /* not important */ }
   renderLibrary();
 }
 
@@ -1839,6 +1852,11 @@ function renderLibrary() {
   const all = q
     ? every.filter((c) => (c.name + ' ' + (c.currentTitle || '')).toLowerCase().indexOf(q) !== -1)
     : every;
+  // Folders on a drive that is not plugged in. Unplug a disk holding most of the
+  // library and the page fills with cards that cannot be opened, so they can be
+  // hidden; everything below counts what is left rather than what is there.
+  const away = all.filter((c) => c.missing).length;
+  const here = libHideMissing ? all.filter((c) => !c.missing) : all;
   // Each group counts what it would give you with the *other* group applied, so
   // the numbers on the buttons are what you actually get by pressing them.
   const byStatus = (c) => libStatus === 'any' ||
@@ -1856,7 +1874,7 @@ function renderLibrary() {
   every.forEach((c) => (c.tags || []).forEach((t) => { tagsInUse[t] = true; }));
   libTagSel = libTagSel.filter((t) => tagsInUse[t]);
 
-  const forType = all.filter(byStatus).filter(byTag);
+  const forType = here.filter(byStatus).filter(byTag);
   const films = forType.filter((c) => !c.series);
   const series = forType.filter((c) => c.series);
   const buckets = { all: forType, films: films, series: series };
@@ -1869,7 +1887,7 @@ function renderLibrary() {
   // list behind it has ever been fetched.
   const filmTotal = every.reduce((t, c) => t + (c.series || c.missing ? 0 : (c.total || 0)), 0);
 
-  const forStatus = all.filter(byType).filter(byTag);
+  const forStatus = here.filter(byType).filter(byTag);
   const doneCount = forStatus.filter(libFinished).length;
   const todoCount = forStatus.length - doneCount;
   if ((libStatus === 'done' && !doneCount) || (libStatus === 'todo' && !todoCount)) libStatus = 'any';
@@ -1879,7 +1897,7 @@ function renderLibrary() {
   // already selected — the same rule the chips above already follow.
   const tagCounts = {};
   Object.keys(tagsInUse).sort().forEach((t) => {
-    tagCounts[t] = all.filter(byType).filter(byStatus).filter((c) =>
+    tagCounts[t] = here.filter(byType).filter(byStatus).filter((c) =>
       (c.tags || []).indexOf(t) !== -1 &&
       libTagSel.every((o) => o === t || (c.tags || []).indexOf(o) !== -1)).length;
   });
@@ -1901,8 +1919,10 @@ function renderLibrary() {
   let h = '<div class="libwrap"><h1 class="libtitle">Your library</h1>' +
     (libView === 'films' ? '' :
       '<p class="libintro">' + (q
-        ? all.length + ' of ' + every.length + ' folders match'
-        : every.length + ' folder' + (every.length === 1 ? '' : 's') + ' &middot; pick one to carry on') + '</p>');
+        ? here.length + ' of ' + every.length + ' folders match'
+        : every.length + ' folder' + (every.length === 1 ? '' : 's') +
+          (libHideMissing && away ? ' &middot; ' + away + ' unavailable, hidden' : '') +
+          ' &middot; pick one to carry on') + '</p>');
 
   // Always shown once there is more than one folder. Hiding it when a bucket
   // happened to be empty just meant hunting for a control that was not there.
@@ -1928,6 +1948,12 @@ function renderLibrary() {
           (f[2] ? '' : ' disabled') + '>' + f[1] +
           '<span class="n">' + f[2] + '</span></button>';
       }).join('') +
+      // Only when there are any. A control for a situation you are not in is
+      // one more thing to read past.
+      (away ? '<span class="sep"></span>' +
+        '<button class="chip' + (libHideMissing ? ' on' : '') + '" data-hidemissing="1" ' +
+        'title="Folders on a drive that is not plugged in">Hide unavailable' +
+        '<span class="n">' + away + '</span></button>' : '') +
       '<span class="libsearch"><input type="text" id="libSearch" placeholder="Search your folders\u2026" ' +
       'value="' + esc(libQuery) + '">' +
       (libQuery ? '<span class="x" id="libClear" title="Clear">&#10005;</span>' : '') +
@@ -1987,6 +2013,13 @@ function renderLibrary() {
     scrollTo({ top: keepY, behavior: 'instant' });
     wireLibrary(typing, caret);   // or the search box loses focus per keystroke
     return;
+  }
+
+  // Hiding them all leaves an empty page that looks like a fault rather than a
+  // choice, so it says which it is.
+  if (!list.length && libHideMissing && away && !q) {
+    h += '<div class="libempty">Every folder is on a drive that is not plugged in. ' +
+      'Plug it back in, or press <b>Hide unavailable</b> again to see them.</div>';
   }
 
   h += '<div class="libgrid">';
@@ -2101,6 +2134,9 @@ function wireLibrary(typing, caret) {
   });
   document.querySelectorAll('.chip[data-status]').forEach((el) => {
     el.onclick = () => setLibStatus(el.dataset.status);
+  });
+  document.querySelectorAll('.chip[data-hidemissing]').forEach((el) => {
+    el.onclick = () => setLibHideMissing(!libHideMissing);
   });
   document.querySelectorAll('.chip[data-view]').forEach((el) => {
     el.onclick = () => setLibView(libView === el.dataset.view ? 'folders' : el.dataset.view);
@@ -2639,6 +2675,7 @@ const GUIDE = [
     ['Finding a film', 'Under the folders, <b>Inside your folders</b> lists every title that matches, wherever it lives. Searching <i>iron</i> turns up the Iron Man films in two different shelves and <i>S08E06 · The Iron Throne</i> in Game of Thrones, because episode names are searched too. So is the filename, which is often where the year and the original title are. Click a result and it opens that folder with the title on the billboard; as with clicking a poster, nothing starts playing.'],
     ['What search cannot see', 'A folder on a drive that is unplugged is skipped, since its file list cannot be read. Cast and directors are not searched from here either; that lives in <b>Details</b>, which searches one collection at a time.'],
     ['Watched or not', 'The second pair of buttons, <b>Watched</b> and <b>Not watched</b>, asks a different question from the first, so the two combine: <i>TV series</i> plus <i>Not watched</i> is the shows you have yet to start. <b>Watched</b> means a folder with nothing left in it; everything else, untouched or half way through, counts as not watched, so the two numbers always add up to the whole shelf. Pressing the one already on turns it off again.'],
+    ['A drive that is not plugged in', 'Folders on it read <i>Folder not found</i>, and with a disk unplugged that can be most of the page. <b>Hide unavailable</b> appears in the row whenever there are any, with the number beside it, and takes them out of the grid and out of every count. It is remembered between launches, and the line under the title still says how many are hidden. Nothing is forgotten: plug the drive back in and they return, progress and all.'],
     ['Films or series', 'Above the Library grid sit <b>Everything</b> / <b>Films</b> / <b>TV series</b> buttons. A collection is filed by what is actually in its folder. A folder on a drive that is currently unplugged is still filed correctly, because the filenames it saw last time are enough to tell episodes from films. A button with nothing behind it is greyed out rather than hidden.'],
     ['Stop the extra tab', 'Once you launch from the installed icon, the browser window the server opens on startup is just clutter. Turn off <b>Open a window when NAVFLIX starts</b> in Settings. The server still prints its address, so you can always get back by hand.'],
     ['Install it as an app', 'In Chrome or Edge, the address bar shows an install icon while NAVFLIX is open. Installing gives it a Start menu entry and its own window with no address bar and no browser buttons. It still needs the server running, so keep starting it the usual way.'],
