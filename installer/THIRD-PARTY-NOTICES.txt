@@ -1,0 +1,25 @@
+NAVFLIX includes software made by other people. Each is included unmodified,
+and each licence is named below along with where its text can be found.
+
+
+Node.js  (runtime\node\node.exe)
+
+  Copyright Node.js contributors. MIT licence, together with the licences of the
+  libraries Node.js itself includes. The full text:
+  https://github.com/nodejs/node/blob/main/LICENSE
+
+
+VLC media player  (runtime\vlc\)
+
+  Copyright VideoLAN and the VLC authors. GNU General Public License, version 2
+  or later. The licence text is included with VLC in runtime\vlc (COPYING.txt).
+
+  VLC is included exactly as VideoLAN distributes it. The source code for this
+  version is available from VideoLAN:
+  https://download.videolan.org/pub/videolan/vlc/
+
+
+Inter typeface  (public\fonts\)
+
+  Copyright 2016 The Inter Project Authors. SIL Open Font License, version 1.1.
+  The licence text is public\fonts\LICENSE-Inter.txt.

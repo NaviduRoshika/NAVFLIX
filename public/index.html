@@ -12,6 +12,11 @@
 <link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="theme-color" content="#0a0a0c">
 <meta name="application-name" content="NAVFLIX">
+<!-- The typeface travels with the app, so Linux and macOS draw the same letters
+     Windows does. The basic Latin file is fetched early so the first paint is
+     already in it rather than swapping from a stand-in. -->
+<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts/inter.css">
 <style>
   :root {
     --bg: #0a0a0c;
@@ -25,6 +30,10 @@
     --shadow: 0 18px 45px rgba(0,0,0,.65);
     --card-w: 172px;
     --card-wide: 288px;
+    /* Tells the browser the page is dark, so the parts it draws itself (the
+       list a dropdown opens, scrollbars, date pickers) are dark on every system
+       instead of following a light desktop theme. */
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   /* Author rules like `label.f { display: block }` outrank the UA's
@@ -34,7 +43,7 @@
      entirely rather than done instantly, which breaks jump links outright. */
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.5 "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif;
+    font: 15px/1.5 "Inter NAVFLIX", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased; overflow-x: hidden;
   }
   ::-webkit-scrollbar { height: 8px; width: 10px; }
@@ -52,7 +61,7 @@
   .brand {
     font-size: 25px; font-weight: 900; letter-spacing: 1.5px; color: var(--red);
     text-shadow: 0 2px 14px rgba(225,29,41,.45); cursor: default; user-select: none;
-    font-family: "Segoe UI Black", "Arial Black", "Segoe UI", sans-serif;
+    font-family: "Inter NAVFLIX", "Segoe UI Black", "Arial Black", "Segoe UI", sans-serif;
   }
   .navlinks { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
   .navlink {
@@ -756,6 +765,32 @@
   .scoll { font-size: 18px; font-weight: 700; margin: -4px 0 16px; overflow-wrap: anywhere; }
   .snote { font-size: 13px; margin: 0 0 18px; }
 
+  /* ---- settings: leftovers progress ---- */
+  .tidy {
+    margin: 12px 0 4px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 8px; background: #111117;
+  }
+  .tidyhead { display: flex; align-items: center; gap: 10px; font-size: 13.5px; margin-bottom: 10px; }
+  .tidyhead span { flex: 1; min-width: 0; }
+  .tidyhead .mini { padding: 4px 10px; font-size: 12px; }
+  .tidybar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .tidybar span {
+    display: block; height: 100%; width: 0; background: var(--red); border-radius: 3px;
+    transition: width .35s ease;
+  }
+  /* No total yet (a folder listing still being read): a sliding sliver says
+     "working" without pretending to know how far along it is. */
+  .tidybar.busy span { width: 28%; transition: none; animation: tidyslide 1.3s ease-in-out infinite; }
+  @keyframes tidyslide { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
+  .tidysub {
+    margin-top: 8px; font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tidybar span { transition: none; }
+    .tidybar.busy span { animation: none; width: 100%; opacity: .35; }
+  }
+
   /* Manage carries more per row than any other dialog, so it gets more room. */
   #dlgManage { width: min(720px, 94vw); }
   /* Wide enough for the seven whole-app section links on one row; at 600px the
@@ -815,7 +850,7 @@
   .mini.go:hover { background: var(--red-hi); border-color: var(--red-hi); }
 
   .toast {
-    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 90;
+    position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%); z-index: 90;
     background: #2a1416; border: 1px solid #6d2a2f; color: #ffc0b8;
     padding: 12px 20px; border-radius: 8px; font-size: 14px; max-width: 88vw;
     opacity: 0; pointer-events: none; transition: .25s;
@@ -823,6 +858,96 @@
   .toast.show { opacity: 1; }
   .muted { color: var(--muted); }
   .warn { color: #ffbe4d; }
+
+  /* ---- the address, at the foot of every page ---- */
+  body { padding-bottom: 30px; }
+  .appfoot {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 80; height: 30px;
+    display: flex; align-items: center; gap: 8px; padding: 0 44px;
+    font-size: 12px; color: var(--muted);
+    background: rgba(9,9,12,.94); border-top: 1px solid rgba(255,255,255,.07);
+    backdrop-filter: blur(8px);
+  }
+  .appfoot[hidden] { display: none; }
+  .appfoot .fdot { width: 7px; height: 7px; border-radius: 50%; background: #2e9e5b; flex: none; }
+  .appfoot .furl { color: #e7e9ee; font-variant-numeric: tabular-nums; user-select: all; }
+  .appfoot .footcopy {
+    font: inherit; font-size: 11.5px; color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 8px; cursor: pointer;
+  }
+  .appfoot .footcopy:hover { color: #fff; border-color: rgba(255,255,255,.35); }
+  .appfoot .fdot.wait { background: #ffbe4d; }
+  .appfoot .fdot.off { background: #55555f; }
+  .appfoot .footcopy[hidden] { display: none; }
+  .appfoot .fnote { color: #ffbe4d; }
+  .appfoot .flocal { color: var(--muted); white-space: nowrap; }
+  .appfoot .spacer { flex: 1; }
+  @media (max-width: 760px) {
+    .appfoot { padding: 0 20px; }
+    .appfoot .flocal { display: none; }
+  }
+
+  /* ---- the Artwork page ---- */
+  .awwrap { max-width: 980px; }
+  .covlink { color: #e7e9ee; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .awrun {
+    margin: 6px 0 22px; padding: 16px 18px;
+    border: 1px solid var(--line); border-radius: 10px; background: #0e0e13;
+  }
+  .awrun .head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .awrun .head .what { flex: 1; min-width: 220px; font-size: 15px; overflow-wrap: anywhere; }
+  .awrun .tidybar { margin-top: 12px; }
+  .awrun .opts { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .awrun .opts input { accent-color: var(--red); }
+  .awrun .result { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .awrun .result.warn { color: #ffbe4d; }
+  .awtools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+  .awtools .spacer { flex: 1; }
+  .awtools .chip { font: inherit; font-size: 13px; }
+  .awtools .chip .n { opacity: .6; margin-left: 4px; }
+  .awtools input { width: 240px; max-width: 100%; padding: 7px 11px; font-size: 13px; }
+  .awrow {
+    display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin-bottom: 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: #0e0e13;
+  }
+  .awrow.now { border-color: rgba(225,29,41,.6); background: #140e10; }
+  .awrow .awart {
+    width: 46px; height: 66px; flex: none; border-radius: 4px; background-color: #1a1a21;
+    background-size: cover; background-position: center; border: 1px solid rgba(255,255,255,.08);
+  }
+  .awrow .awmain { flex: 1; min-width: 0; }
+  .awrow .awname { font-weight: 650; overflow-wrap: anywhere; }
+  .awrow .awname .tag { margin-left: 8px; vertical-align: 1px; }
+  .awrow .awsub { font-size: 12.5px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+  .awrow .awsub.warn { color: #ffbe4d; }
+  .awrow .awmeter { height: 4px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 8px; max-width: 360px; }
+  .awrow .awmeter i { display: block; height: 100%; background: var(--red); }
+  .awrow .awmeter i.full { background: #2e9e5b; }
+  .awrow .awact { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .awrow .awact .mini:disabled { opacity: .45; cursor: default; }
+  @media (max-width: 760px) {
+    .awrow { flex-wrap: wrap; }
+    .awrow .awact { flex: 1 0 100%; justify-content: flex-start; }
+  }
+
+  /* ---- dropdowns ----
+     Left to itself a select is drawn by the operating system: flat and grey on
+     Windows, a raised GTK button on Linux, so the same page looked like two
+     different apps. Every dropdown now draws its own arrow and nothing else.
+     Kept at the end of the sheet on purpose: the per-dropdown rules above set
+     their colours with the `background` shorthand, which would otherwise wipe
+     the arrow out. */
+  select:not([multiple]) {
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239aa0ae' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    background-size: 10px 6px;
+    padding-right: 30px !important;
+    cursor: pointer;
+  }
+  select:not([multiple]) option,
+  select:not([multiple]) optgroup { background-color: #16161c; color: var(--text); }
 
   @media (max-width: 760px) {
     .nav, .hero-inner, .shell { padding-left: 20px; padding-right: 20px; }
@@ -834,6 +959,20 @@
 </head>
 <body>
 
+<!-- The address to type on the phone, and where this computer reaches NAVFLIX.
+     Filled in by renderFoot(). -->
+<div class="appfoot" id="appFoot" hidden>
+  <span class="fdot" id="footDot"></span>
+  <span id="footLabel">Phone remote</span>
+  <span class="furl" id="footUrl"></span>
+  <button class="footcopy" id="btnFootCopy" title="Copy the address for your phone" hidden>Copy</button>
+  <button class="footcopy" id="btnFootQr" title="Show a QR code to scan with your phone" hidden>QR</button>
+  <button class="footcopy" id="btnFootOn" title="Phone remote settings" hidden>Turn on</button>
+  <span class="fnote" id="footNote"></span>
+  <span class="spacer"></span>
+  <span class="flocal" id="footLocal"></span>
+</div>
+
 <div class="nav" id="nav">
   <div class="brand" onclick="goLibrary()" title="Your library">NAVFLIX</div>
   <div class="navlink lib" onclick="goLibrary()" title="All your folders">&#9776; Library</div>
@@ -841,8 +980,8 @@
   <div class="spacer"></div>
   <button class="mini" id="btnDetails" onclick="goDetails()" title="What is in these files, and who made them" hidden>Details</button>
   <button class="mini" id="btnGuide" onclick="goGuide()" title="How everything works" hidden>Guide</button>
+  <button class="mini" id="btnArtwork" onclick="goArtwork()" title="Find and download missing posters and episode stills">Artwork</button>
   <button class="mini" id="btnManage">Manage</button>
-  <button class="mini" id="btnQr" onclick="openQr()" title="Scan this with your phone to use it as the remote" hidden>QR</button>
   <button class="mini" id="btnSettings">Settings</button>
 </div>
 
@@ -972,12 +1111,13 @@
       for files that have not been looked at yet, a few at a time. Your own disk
       only, and nothing leaves the machine. It stops the moment you press play.
     </p>
-    <label class="chk"><input type="checkbox" id="setBgFetch"> Fetch artwork in the background</label>
+    <label class="chk"><input type="checkbox" id="setBgFetch"> Look up cast and crew in the background</label>
     <p class="muted" style="font-size:13px;margin:6px 0 4px">
-      Collects the posters and episode stills still missing, so you do not have to
-      press <b>Get artwork</b> once per folder. <b>This one uses the network</b>, a
-      handful of requests at a time. Turn it off if you would rather NAVFLIX only
-      went online when you ask it to.
+      Fills in who made each film and show, with its rating and plot. <b>This one
+      uses the network</b>, a handful of requests at a time. Turn it off if you
+      would rather NAVFLIX only went online when you ask it to. Artwork is never
+      fetched in the background: that happens on the <b>Artwork</b> page, where
+      you start and stop it.
     </p>
     </section>
 
@@ -988,9 +1128,9 @@
       <input type="text" id="setTmdb" placeholder="Leave empty to use the keyless iTunes catalogue">
     </label>
     <p class="muted" style="font-size:13px;margin:-8px 0 4px">
-      Posters are fetched when you press <b>Get artwork</b> and, if you have left
-      the switch above on, in the background too. Either way they are cached on
-      disk, so it happens once. Without a key it uses the free, keyless Cinemeta catalogue,
+      Posters are fetched when you start them on the <b>Artwork</b> page, or press
+      <b>Get artwork</b> on a folder, and are cached on disk so it happens once.
+      Without a key it uses the free, keyless Cinemeta catalogue,
       which is IMDb-backed and covers mainstream films well. A free key from themoviedb.org improves
       coverage for obscure ones.
     </p>
@@ -1028,12 +1168,21 @@
     <section class="sgrp" id="sStorage" data-nav="Storage">
     <h3 class="sec">Storage</h3>
     <button class="mini" id="btnTidy">Look for leftovers</button>
+    <div class="tidy" id="tidyBox" hidden>
+      <div class="tidyhead">
+        <span id="tidyWhat"></span>
+        <button class="mini" id="btnTidyStop">Stop</button>
+      </div>
+      <div class="tidybar" id="tidyBar"><span id="tidyFill"></span></div>
+      <div class="tidysub" id="tidySub"></div>
+    </div>
     <p class="muted" style="font-size:13px;margin:8px 0 14px">
       Deleting a video leaves its saved position behind, and removing a folder
       leaves its cached posters and subtitles on disk. Nothing clears either up.
       This looks for both and shows you exactly what it found before removing
       anything. A folder it cannot read is left completely alone, since an
-      unplugged drive looks the same as a deleted one.
+      unplugged drive looks the same as a deleted one. On a slow drive this can
+      take a while; everything else keeps working meanwhile, and you can stop it.
     </p>
     </section>
 
@@ -1270,6 +1419,7 @@ async function refresh() {
 
   S = next;
   bootDone();
+  renderFoot();
   // Two entries: a floor that Back can never step off, and the view you
   // actually started on sitting above it.
   if (!navSeeded) {
@@ -1564,7 +1714,8 @@ function renderCoverage(every) {
   ];
 
   let h = '<div class="cov"><h3>Coverage</h3>' +
-    '<p class="sub">What the background has filled in so far, across every folder.</p>';
+    '<p class="sub">What has been filled in so far, across every folder. Artwork is fetched from the ' +
+    '<a class="covlink" onclick="goArtwork()">Artwork page</a>.</p>';
 
   rows.forEach((r) => {
     const pct = r[2] ? Math.round((r[1] / r[2]) * 100) : 100;
@@ -1810,7 +1961,7 @@ function renderLibrary() {
   const bg = S.background && S.background.note;
   if (bg && plainView) {
     h += '<div class="bgline"><span class="dot"></span>' +
-      (bg.kind === 'scan' ? 'Reading file details' : 'Fetching artwork') +
+      (bg.kind === 'scan' ? 'Reading file details' : 'Looking up cast and crew') +
       ' &middot; ' + esc(bg.collection) +
       (bg.left ? ' &middot; ' + bg.left + ' to go' : '') + '</div>';
   }
@@ -2515,12 +2666,12 @@ const GUIDE = [
     ['Browsing from the phone', 'The <b>&#9776; Browse</b> button opens your collections, and tapping one opens its list of films or episodes, grouped by season for a show. Tapping a title <b>selects</b> it and returns you to the handset screen; the big red button is still what starts it, so nothing plays by accident.'],
     ['It moves the PC too', 'Picking a collection on the phone switches the PC to it as well, so the two never disagree about what you are watching.'],
     ['Turning it on', 'Settings &rarr; <b>Phone remote</b>, then restart NAVFLIX. Until you do that the server only listens to this computer, which is why the change needs a restart.'],
-    ['Where the address is', 'The <b>QR</b> button in the top bar shows the address, the code and the scannable version together. Settings &rarr; <b>Phone remote</b> has the same thing with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time either one is opened, so it is always the current one. That matters, because it changes when this PC joins another network.'],
+    ['Where the address is', 'The bar at the foot of the page always shows the address, with <b>Copy</b>, and its <b>QR</b> button shows the address, the code and the scannable version together. Settings &rarr; <b>Phone remote</b> has the same thing with a <b>Copy address</b> button. The console prints both on startup too. The address is worked out fresh every time either one is opened, so it is always the current one. That matters, because it changes when this PC joins another network.'],
     ['It changed by itself', 'The address is this PC on your network, so it changes when the PC joins a different one: home Wi-Fi, a phone hotspot, the office. The pairing code does not change, and a paired phone stays paired. Just open Settings for the new address.'],
-    ['Pairing', 'Press <b>QR</b> in the top bar and point the phone camera at it. The code travels in the link, so it pairs on its own. The button only appears once the remote is on and this machine has a network address. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
+    ['Pairing', 'Press <b>QR</b> in the bar at the foot of the page and point the phone camera at it. The code travels in the link, so it pairs on its own. The button only appears once the remote is on and this machine has a network address. Or open the address by hand and type the six digits. Either way it stays paired. Five wrong codes locks pairing from that device for five minutes.'],
     ['What the phone cannot do', 'Settings, the folder browser, adding or removing collections, and erasing progress are all refused over the network, whether or not the phone is paired. Those stay on the PC because they can change what gets run and can read your disk.'],
     ['Removing a phone', '<b>Unpair this phone</b> on the handset revokes it properly, not just locally. <b>New pairing code</b> in Settings drops every paired device at once, which is what to use if a phone goes missing. Switching the remote off also clears them all.'],
-    ['It will not start now', 'Switching the remote on means the port has to be free on every network interface, not just this machine, so something that was quietly holding it can suddenly clash. NAVFLIX says which port and exits. Free it, or start with a different one: <code>set PORT=8788 &amp;&amp; node server.js</code>.'],
+    ['A different port', 'Switching the remote on means the port has to be free on every network interface, not just this machine, so something that was quietly holding it can suddenly clash. NAVFLIX then moves to the next free port, and the bar at the foot of the page shows which. The phone’s address includes the port, so scan the QR code again.'],
     ['Add it to the home screen', 'It works as a home screen app on the phone, though the browser will not offer a full install over a plain network address, only over localhost.'],
   ]],
 
@@ -2529,8 +2680,14 @@ const GUIDE = [
     ['Episodes show their own frame', 'A show has one poster, so every episode used to look identical. Episodes now use the still from that episode, which the catalogue provides and NAVFLIX already caches. Those stills are widescreen, so a show gets wider cards; film shelves keep tall posters.'],
     ['Your own files win', 'An image named after the film, such as <code>Iron Man (2008).jpg</code>, is always used ' +
       'first. In a folder-per-film layout, <code>poster.jpg</code> and <code>fanart.jpg</code> are picked up too.'],
-    ['Get artwork', 'The billboard button fetches a poster and a landscape backdrop for anything missing one and ' +
-      'caches them on disk. Roughly 25 KB a poster, 500 KB a backdrop.'],
+    ['The Artwork page', 'The <b>Artwork</b> button in the top bar lists every folder and what it is missing. ' +
+      '<b>Get missing artwork</b> works through them one folder at a time with a progress bar, and <b>Stop</b> ' +
+      'stops it. Nothing is fetched in the background.'],
+    ['A show that is not found', 'Shows are looked up by name. When a folder is called something the catalogue ' +
+      'does not recognise, the page says so and leaves it out of the next run. Press <b>Rename</b>, give it the ' +
+      'show’s real title, and it is looked up again.'],
+    ['Get artwork', 'The billboard button does the same for just the folder you have open, fetching a poster and ' +
+      'a landscape backdrop for anything missing one. Roughly 25 KB a poster, 500 KB a backdrop.'],
     ['Shows', 'One poster for the series, the real still for each episode, and episode names ' +
       '(<i>S03E04 · XXII.</i>) pulled in at the same time.'],
     ['Better coverage', 'A free TMDB key in Settings improves matching for obscure or non-English titles. ' +
@@ -2633,8 +2790,9 @@ function renderGuide() {
     h += '</dl></section>';
   });
 
-  h += '<p class="gfoot">NAVFLIX plays through VLC and keeps everything on this machine. The only time it ' +
-    'reaches the internet is when you press <b>Get artwork</b> or <b>Download subtitles</b>.</p></div>';
+  h += '<p class="gfoot">NAVFLIX plays through VLC and keeps everything on this machine. It reaches the ' +
+    'internet to fetch artwork and subtitles when you ask it to, and to look up cast and crew, which ' +
+    'Settings can switch off.</p></div>';
 
   $('#app').innerHTML = h;
 
@@ -2651,6 +2809,416 @@ function goGuide() {
   pushNav();
   showView('guide');
 }
+
+/* ---------------------------------------------------------------- artwork */
+//
+// Artwork on a page of its own, started and stopped by you. It used to be
+// collected in the background too, and a show whose folder name the catalogue
+// could not match held that up for good, invisibly: it was never marked as
+// tried, so the sweep went straight back to it every fifteen seconds.
+
+let AW = null;              // { run, job, catalogue, folders }
+let awFilter = 'missing';   // missing | attention | all
+let awQuery = '';
+let awRetry = false;
+let awTimer = null;
+let awSeq = 0;
+
+const awN = (x) => Number(x || 0).toLocaleString();
+const awPlural = (n, one, many) => awN(n) + ' ' + (n === 1 ? one : many);
+
+function goArtwork() {
+  view = 'artwork';
+  pushNav();
+  showView('artwork');
+}
+
+const awBusy = () => !!(AW && ((AW.run && AW.run.running) || (AW.job && AW.job.running)));
+
+// The same wrong name searched twice finds the same nothing, so a show that
+// could not be identified sits out "Get missing artwork" until it is renamed.
+const awStuck = (f) => !!(f.last && f.last.outcome === 'unidentified' && f.last.name === f.name);
+
+function awNeedsLook(f) {
+  if (f.missing) return false;
+  return awStuck(f) || f.tried > 0 ||
+    !!(f.last && (f.last.outcome === 'offline' || f.last.outcome === 'error'));
+}
+
+async function loadArtwork(withList) {
+  const r = await api('/api/artwork' + (withList ? '?list=1' : ''));
+  if (!withList) r.folders = AW ? AW.folders : null;
+  AW = r;
+}
+
+// Quick while something is running, slow otherwise: just often enough to notice
+// a folder's own Get artwork button being pressed somewhere else.
+function awSchedule() {
+  clearTimeout(awTimer);
+  if (view !== 'artwork') return;
+  awTimer = setTimeout(() => awTick(false), awBusy() ? 1200 : 5000);
+}
+
+async function awTick(withList) {
+  clearTimeout(awTimer);
+  if (view !== 'artwork') return;
+  const seq = ++awSeq;
+  const wasBusy = awBusy();
+  const before = AW && AW.run ? AW.run.results.length : -1;
+  try {
+    await loadArtwork(withList || !AW || !AW.folders);
+    // A folder finished, or the whole run did, so the counts on the list moved.
+    const after = AW.run ? AW.run.results.length : -1;
+    if (!withList && (after !== before || (wasBusy && !awBusy()))) await loadArtwork(true);
+  } catch (e) { /* the next tick may reach it */ }
+  if (seq !== awSeq || view !== 'artwork') return;
+  if ($('#awShell')) { $('#awRun').innerHTML = awRunHtml(); awPaintList(); }
+  awSchedule();
+}
+
+function renderArtwork() {
+  if (!$('#awShell')) {
+    $('#app').innerHTML =
+      '<div class="guidewrap awwrap" id="awShell">' +
+        '<h1 class="libtitle">Artwork</h1>' +
+        '<p class="libintro">Posters, backdrops and episode stills for every folder. Nothing is ' +
+        'downloaded until you start it here, and you can stop it at any point.</p>' +
+        '<div id="awRun"></div>' +
+        '<div class="awtools"><span id="awChips"></span><span class="spacer"></span>' +
+          '<input type="text" id="awSearch" placeholder="Find a folder" autocomplete="off" spellcheck="false">' +
+        '</div>' +
+        '<div id="awList"><div class="libempty">Reading your folders…</div></div>' +
+      '</div>';
+    const shell = $('#awShell');
+    // Delegated, because the rows and their buttons are redrawn on every tick.
+    shell.addEventListener('click', awClick);
+    shell.addEventListener('change', (e) => {
+      if (e.target.id !== 'awRetry') return;
+      awRetry = e.target.checked;
+      $('#awRun').innerHTML = awRunHtml();
+    });
+    // The search box sits outside everything that gets redrawn, so typing in it
+    // keeps its focus and caret.
+    const box = $('#awSearch');
+    box.value = awQuery;
+    box.oninput = () => { awQuery = box.value; awPaintList(); };
+    box.onkeydown = (e) => {
+      if (e.key === 'Escape' && box.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        box.value = '';
+        awQuery = '';
+        awPaintList();
+      }
+    };
+    awTick(true);
+  }
+  $('#awRun').innerHTML = awRunHtml();
+  awPaintList();
+}
+
+function awProgressText(j) {
+  if (!j) return 'Starting the next folder…';
+  if (j.phase === 'identifying') return 'Identifying the show…';
+  const bits = [awN(j.done) + ' of ' + awN(j.total)];
+  if (j.found) bits.push(awN(j.found) + ' downloaded');
+  if (j.failed) bits.push(awN(j.failed) + ' not found');
+  if (j.skipped) bits.push(awN(j.skipped) + ' skipped, as they found nothing before');
+  return bits.join(' · ');
+}
+
+function awRunHtml() {
+  if (!AW) return '';
+  const run = AW.run;
+  const job = AW.job && AW.job.running ? AW.job : null;
+
+  if (run && run.running) {
+    const frac = job && job.total ? job.done / job.total : 0;
+    const pct = Math.min(100, ((run.index + frac) / Math.max(1, run.total)) * 100);
+    return '<div class="awrun"><div class="head">' +
+        '<div class="what">Folder ' + awN(run.index + 1) + ' of ' + awN(run.total) +
+          (job ? ': <b>' + esc(job.name) + '</b>' : '') + '</div>' +
+        '<button class="mini" data-aw="stop"' + (run.stopping ? ' disabled' : '') + '>' +
+          (run.stopping ? 'Stopping…' : 'Stop') + '</button>' +
+      '</div>' +
+      '<div class="tidybar"><span style="width:' + pct.toFixed(1) + '%"></span></div>' +
+      '<div class="tidysub">' +
+        (run.stopping ? 'Finishing the image in hand, then stopping.' : awProgressText(job)) + '</div>' +
+    '</div>';
+  }
+
+  // A folder's own Get artwork, or Re-identify, running by itself.
+  if (job) {
+    const pct = job.total ? Math.min(100, (job.done / job.total) * 100) : 0;
+    return '<div class="awrun"><div class="head">' +
+        '<div class="what">Fetching artwork for <b>' + esc(job.name) + '</b></div>' +
+        '<button class="mini" data-aw="stop">Stop</button>' +
+      '</div>' +
+      '<div class="tidybar"><span style="width:' + pct.toFixed(1) + '%"></span></div>' +
+      '<div class="tidysub">' + awProgressText(job) + '</div>' +
+    '</div>';
+  }
+
+  const folders = (AW.folders || []).filter((f) => !f.missing && f.total);
+  const outstanding = folders.filter((f) => f.todo + f.tried > 0);
+  const fresh = folders.filter((f) => f.todo > 0 && !awStuck(f));
+  const queue = awRetry ? outstanding : fresh;
+
+  let h = '<div class="awrun"><div class="head"><div class="what">' +
+    (!AW.folders ? 'Reading your folders…'
+      : outstanding.length ? '<b>' + awPlural(outstanding.length, 'folder', 'folders') + '</b> missing artwork'
+      : 'Every folder has its artwork.') +
+    '</div>' +
+    '<button class="mini go" data-aw="all"' + (queue.length ? '' : ' disabled') + '>' +
+      'Get missing artwork' + (queue.length ? ' (' + awPlural(queue.length, 'folder', 'folders') + ')' : '') +
+    '</button></div>';
+  if (outstanding.length) {
+    h += '<label class="opts"><input type="checkbox" id="awRetry"' + (awRetry ? ' checked' : '') + '> ' +
+      'Also try again for titles that found nothing last time</label>';
+  }
+  return h + awLastRunHtml(run) + '</div>';
+}
+
+function awLastRunHtml(run) {
+  if (!run || run.running || !run.finishedAt) return '';
+  const res = run.results || [];
+  const found = res.reduce((t, r) => t + (r.found || 0), 0);
+  const trouble = res.filter((r) => ['unidentified', 'partial', 'offline', 'error'].indexOf(r.outcome) !== -1);
+  let msg;
+  if (run.error) {
+    msg = 'Stopped: ' + run.error;
+  } else if (run.stopped) {
+    msg = 'Stopped after ' + awN(res.length) + ' of ' + awPlural(run.total, 'folder', 'folders') + '. ' +
+      awPlural(found, 'image', 'images') + ' downloaded.';
+  } else {
+    msg = 'Last run: ' + awPlural(res.length, 'folder', 'folders') + ', ' +
+      awPlural(found, 'image', 'images') + ' downloaded.';
+  }
+  if (trouble.length && !run.error) {
+    msg += ' ' + awN(trouble.length) + (trouble.length === 1 ? ' needs' : ' need') + ' attention.';
+  }
+  return '<div class="result' + (run.error || trouble.length ? ' warn' : '') + '">' + esc(msg) + '</div>';
+}
+
+function awPaintList() {
+  const list = $('#awList');
+  if (!list || !AW || !AW.folders) return;
+  const all = AW.folders;
+  const missingOnes = all.filter((f) => !f.missing && f.todo + f.tried > 0);
+  const attention = all.filter(awNeedsLook);
+
+  $('#awChips').innerHTML = [
+    ['missing', 'Missing artwork', missingOnes.length],
+    ['attention', 'Needs attention', attention.length],
+    ['all', 'All folders', all.length],
+  ].map((c) => '<button class="chip' + (awFilter === c[0] ? ' on' : '') + '" data-aw="filter" data-f="' + c[0] + '">' +
+    c[1] + '<span class="n">' + c[2] + '</span></button>').join(' ');
+
+  let rows = awFilter === 'missing' ? missingOnes : awFilter === 'attention' ? attention : all.slice();
+  const q = awQuery.trim().toLowerCase();
+  if (q) rows = rows.filter((f) => (f.name + ' ' + (f.matched || '')).toLowerCase().indexOf(q) !== -1);
+
+  if (!rows.length) {
+    list.innerHTML = '<div class="libempty">' +
+      (q ? 'No folder matches “' + esc(awQuery.trim()) + '”.'
+        : awFilter === 'missing' ? 'Nothing is missing. Every folder has its artwork.'
+        : awFilter === 'attention' ? 'Nothing needs attention.'
+        : 'No folders yet.') + '</div>';
+    return;
+  }
+
+  const left = (f) => (f.todo || 0) + (f.tried || 0);
+  // Problems first, then unplugged drives last, then whatever is missing most.
+  rows.sort((a, b) => (awNeedsLook(b) - awNeedsLook(a)) || (!!a.missing - !!b.missing) ||
+    (left(b) - left(a)) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+  const job = AW.job && AW.job.running ? AW.job : null;
+  const off = awBusy() ? ' disabled' : '';
+
+  list.innerHTML = rows.map((f) => {
+    const art = '<div class="awart" style="' + (f.cover
+      ? "background-image:url('" + f.cover + "')" : 'background-image:' + fakeArt(f.name)) + '"></div>';
+    if (f.missing) {
+      return '<div class="awrow">' + art + '<div class="awmain"><div class="awname">' + esc(f.name) + '</div>' +
+        '<div class="awsub">Not connected. Plug its drive in to fetch its artwork.</div></div></div>';
+    }
+    const now = !!(job && job.collectionId === f.id);
+    const have = Math.min(f.total, f.have + (now ? job.found : 0));
+    const pct = f.total ? Math.round((have / f.total) * 100) : 100;
+
+    let sub;
+    if (awStuck(f)) {
+      sub = '<div class="awsub warn">Could not identify this show from its name. Rename it to the ' +
+        'show’s real title, with the year in brackets if there is a remake, and it is looked up again.</div>';
+    } else {
+      const bits = [];
+      if (f.series) bits.push(f.matched ? 'Matched as <b>' + esc(f.matched) + '</b>' : 'Not identified yet');
+      bits.push(awN(have) + ' of ' + awN(f.total) + (f.series ? ' episode stills' : ' films'));
+      if (f.tried) bits.push(awN(f.tried) + ' found nothing');
+      sub = '<div class="awsub">' + bits.join(' · ') + '</div>';
+      if (f.last && (f.last.outcome === 'offline' || f.last.outcome === 'error')) {
+        sub += '<div class="awsub warn">Last time: ' + esc(f.last.error || 'something went wrong') + '</div>';
+      }
+    }
+
+    const acts = [];
+    if (now) {
+      acts.push('<button class="mini" data-aw="stop">Stop</button>');
+    } else if (left(f)) {
+      acts.push('<button class="mini" data-aw="one" data-id="' + f.id + '"' + off + '>' +
+        'Get missing (' + awN(left(f)) + ')</button>');
+    }
+    if (f.series) {
+      acts.push('<button class="mini" data-aw="rename" data-id="' + f.id + '"' + off +
+        ' title="A show is looked up by its name. Change it here if the folder name is wrong.">Rename</button>');
+      if (f.matched) {
+        acts.push('<button class="mini" data-aw="reart" data-id="' + f.id + '"' + off +
+          ' title="For when the wrong show was matched. Searches again and replaces every image.">Re-identify</button>');
+      }
+    }
+    acts.push('<button class="mini" data-aw="open" data-id="' + f.id + '">Open</button>');
+
+    return '<div class="awrow' + (now ? ' now' : '') + '">' + art +
+      '<div class="awmain"><div class="awname">' + esc(f.name) +
+        '<span class="tag">' + (f.series ? 'Show' : 'Films') + '</span></div>' + sub +
+        '<div class="awmeter"><i class="' + (have >= f.total ? 'full' : '') + '" style="width:' + pct + '%"></i></div>' +
+      '</div><div class="awact">' + acts.join('') + '</div></div>';
+  }).join('');
+}
+
+// Every start and stop answers with the new status. Draw it straight away
+// rather than waiting a tick to find out.
+async function awAfter(pending) {
+  const r = await pending;
+  r.folders = AW ? AW.folders : null;
+  AW = r;
+  if ($('#awShell')) { $('#awRun').innerHTML = awRunHtml(); awPaintList(); }
+  awSchedule();
+}
+
+async function awClick(e) {
+  const b = e.target.closest('[data-aw]');
+  if (!b || b.disabled) return;
+  const act = b.dataset.aw;
+  const id = b.dataset.id;
+  const f = id && AW && AW.folders ? AW.folders.find((x) => x.id === id) : null;
+  try {
+    if (act === 'filter') { awFilter = b.dataset.f; awPaintList(); return; }
+    if (act === 'stop') { await awAfter(post('/api/artwork/stop')); return; }
+    if (act === 'all') { await awAfter(post('/api/artwork/start', { retry: awRetry })); return; }
+    if (act === 'one') { await awAfter(post('/api/artwork/start', { ids: [id], retry: true })); return; }
+    if (act === 'open') {
+      S = await post('/api/collections/select', { id: id });
+      view = 'collection';
+      pushNav();
+      showView('collection');
+      return;
+    }
+    if (!f) return;
+
+    if (act === 'rename') {
+      const name = await uiPrompt({
+        title: 'Rename "' + f.name + '"',
+        message: 'A show is looked up by this name, so use its real title. For a remake, add the year in ' +
+          'brackets, as in Avatar The Last Airbender - [2005].\n\n' +
+          'This renames it in NAVFLIX only. Nothing on the disk changes.',
+        label: 'Name',
+        input: f.name,
+        confirmLabel: 'Rename and look it up',
+      });
+      if (!name || name.trim() === f.name) return;
+      S = await post('/api/collections/rename', { id: id, name: name.trim() });
+      // Matched already means the name found the wrong show, so that answer has
+      // to be thrown away. Not matched means nothing was found: just look again.
+      if (f.matched) S = await post('/api/art/fetch', { collectionId: id, force: true });
+      else await post('/api/artwork/start', { ids: [id], retry: true });
+      await awTick(true);
+      return;
+    }
+
+    if (act === 'reart') {
+      const sure = await uiConfirm({
+        title: 'Look up "' + f.name + '" again?',
+        message: 'For when the wrong show was matched. It is matched as ' + f.matched + ' now.\n\n' +
+          'The catalogue is searched from scratch and every image is downloaded again, ' +
+          'not just the missing ones.\n\nYour progress is untouched.',
+        confirmLabel: 'Look it up again',
+      });
+      if (!sure) return;
+      S = await post('/api/art/fetch', { collectionId: id, force: true });
+      await awTick(true);
+    }
+  } catch (err) { toast(err.message); }
+}
+
+/* ---------------------------------------------------------------- footer */
+// The address to type on the phone, always in sight. It used to live three
+// panels deep in Settings, and it changes whenever this computer joins another
+// network or NAVFLIX has to move port, so it is shown where you can copy it or
+// scan it without going looking. Blank on a paired phone, which is never sent
+// the server details.
+function renderFoot() {
+  const foot = $('#appFoot');
+  if (!foot) return;
+  const sv = S && S.server;
+  foot.hidden = !sv;
+  if (!sv) return;
+
+  const r = S.remote || {};
+  const addrs = r.addresses || [];
+  let label = 'Phone remote';
+  let url = '';
+  let dot = 'on';
+  let note = '';
+
+  if (!r.enabled) {
+    label = 'Phone remote is off';
+    dot = 'off';
+  } else if (!sv.lan) {
+    // Switched on in Settings, but this process is still only listening on
+    // this computer, so the address would lead nowhere yet.
+    dot = 'wait';
+    note = 'Restart NAVFLIX to start it.';
+  } else if (!addrs.length) {
+    dot = 'wait';
+    note = 'No network address. Is this computer connected to Wi-Fi?';
+  } else {
+    url = addrs[0];
+  }
+
+  $('#footDot').className = 'fdot ' + dot;
+  $('#footLabel').textContent = label;
+  $('#footUrl').textContent = url;
+  // A second network adapter (a VPN, a virtual machine) gives a second address.
+  // The likeliest one is shown; the rest are a hover away if it is the wrong one.
+  $('#footUrl').title = addrs.length > 1
+    ? 'Also reachable at ' + addrs.slice(1).map((a) => a.replace(/^https?:\/\//, '')).join(', ')
+    : '';
+  $('#btnFootCopy').hidden = !url;
+  $('#btnFootQr').hidden = !(url && qrReady());
+  $('#btnFootOn').hidden = !!r.enabled;
+  $('#footNote').textContent = note;
+  $('#footLocal').textContent = 'This computer: ' + sv.url.replace(/^https?:\/\//, '') +
+    (sv.port !== sv.preferred ? ' (' + sv.preferred + ' was taken by another program)' : '');
+}
+
+$('#btnFootQr').onclick = () => openQr();
+$('#btnFootOn').onclick = () => openSettings('sRemote');
+
+$('#btnFootCopy').onclick = async () => {
+  const text = $('#footUrl').textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied ' + text);
+  } catch (e) {
+    const range = document.createRange();
+    range.selectNodeContents($('#footUrl'));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    toast('Selected it for you. Press Ctrl+C to copy.');
+  }
+};
 
 // The bar showed every folder ever added, which by a dozen collections was a
 // wall of names you never clicked. It now carries the handful you are actually
@@ -2694,12 +3262,7 @@ function renderTabs() {
   if (gb) gb.hidden = (view !== 'library');
   // Details is about one collection, so it only means anything inside one.
   const db = $('#btnDetails');
-  if (db) db.hidden = !(S && S.activeId) || view === 'library' || view === 'guide';
-  // Only worth offering once there is something to scan. The code and the
-  // address are blank on a paired phone by construction, so the phone never
-  // sees this button either.
-  const qb = $('#btnQr');
-  if (qb) qb.hidden = !qrReady();
+  if (db) db.hidden = !(S && S.activeId) || view === 'library' || view === 'guide' || view === 'artwork';
 
   const t = $('#tabs');
   if (!S || !S.collections.length) { t.innerHTML = ''; return; }
@@ -2798,6 +3361,7 @@ function render() {
 
   if (view === 'details') return renderDetails();
   if (view === 'guide') return renderGuide();
+  if (view === 'artwork') return renderArtwork();
   if (view === 'library' && S.collections.length) return renderLibrary();
 
   if (!A) {
@@ -3875,6 +4439,7 @@ function openSettings(jumpTo) {
     '<button type="button" data-to="' + s.id + '"' + (s.id === 'sDanger' ? ' class="warn"' : '') + '>' +
     esc(s.dataset.nav) + '</button>').join('');
 
+  resumeTidy();
   dlgSettings.showModal();
   $('#setBody').scrollTop = 0;
   spyHold = false;
@@ -4169,15 +4734,103 @@ $('#importFile').onchange = async () => {
   } catch (e) { toast(e.message); }
 };
 
-$('#btnTidy').onclick = async () => {
+// Leftovers are looked for, and removed, by a job on the server, and the page
+// asks how it is going. It used to be one request that waited for the answer,
+// and while the drive worked through every check the server could answer
+// nothing else, which is why Save stopped responding.
+let tidyPoll = null;
+
+function renderTidy(job) {
   const btn = $('#btnTidy');
-  const was = btn.textContent;
-  btn.textContent = 'Looking…';
-  btn.disabled = true;
-  let plan;
-  try { plan = await post('/api/cleanup', {}); }
-  catch (e) { toast(e.message); return; }
-  finally { btn.textContent = was; btn.disabled = false; }
+  const running = !!(job && job.running);
+  $('#tidyBox').hidden = !running;
+  btn.disabled = running;
+  btn.textContent = !running ? 'Look for leftovers' : job.kind === 'apply' ? 'Removing…' : 'Looking…';
+  if (!running) return;
+
+  const n = (x) => Number(x || 0).toLocaleString();
+  $('#tidyWhat').textContent = job.kind === 'apply'
+    ? (job.phase === 'files' ? 'Removing leftover artwork and subtitles' : 'Removing saved positions')
+    : (job.phase === 'files'
+      ? 'Step 2 of 2: sizing up cached artwork and subtitles'
+      : 'Step 1 of 2: checking saved positions against the disk');
+
+  const known = job.total > 0;
+  $('#tidyBar').classList.toggle('busy', !known);
+  $('#tidyFill').style.width = known ? Math.min(100, (job.done / job.total) * 100).toFixed(1) + '%' : '';
+
+  let sub = known ? n(job.done) + ' of ' + n(job.total) : 'Reading the folder listing';
+  if (job.current) sub += ' · ' + job.current;
+  // An estimate only once there is enough behind it to mean something, and only
+  // for this step, since each step goes at its own pace.
+  if (known && job.done > 0 && job.phaseElapsed > 4000) {
+    const left = Math.round((job.phaseElapsed / job.done) * (job.total - job.done) / 1000);
+    if (left >= 5) sub += ' · about ' + (left < 90 ? left + ' s' : Math.round(left / 60) + ' min') + ' left';
+  }
+  $('#tidySub').textContent = sub;
+
+  const stop = $('#btnTidyStop');
+  stop.disabled = !!job.cancelled;
+  stop.textContent = job.cancelled ? 'Stopping…' : 'Stop';
+}
+
+// Keeps asking until the job is done, whether or not Settings stays open, and
+// resolves with the finished job. One watcher per page.
+function watchTidy() {
+  if (tidyPoll) return tidyPoll;
+  tidyPoll = (async () => {
+    try {
+      for (;;) {
+        const r = await api('/api/cleanup');
+        renderTidy(r.job);
+        if (!r.job || !r.job.running) return r.job;
+        await new Promise((ok) => setTimeout(ok, 400));
+      }
+    } finally { tidyPoll = null; }
+  })();
+  return tidyPoll;
+}
+
+$('#btnTidy').onclick = async () => {
+  try {
+    const r = await post('/api/cleanup', {});
+    renderTidy(r.job);
+    await finishTidy(await watchTidy());
+  } catch (e) { renderTidy(null); toast(e.message); }
+};
+
+$('#btnTidyStop').onclick = async () => {
+  try { renderTidy((await post('/api/cleanup', { cancel: true })).job); }
+  catch (e) { toast(e.message); }
+};
+
+// Settings can open on a job already under way: after a reload, or one started
+// from another tab. Show it, rather than a button that implies nothing is running.
+async function resumeTidy() {
+  if (tidyPoll) return;                 // this page is already watching it
+  try {
+    const r = await api('/api/cleanup');
+    renderTidy(r.job);
+    if (r.job && r.job.running) await finishTidy(await watchTidy());
+  } catch (e) { renderTidy(null); }
+}
+
+async function finishTidy(job) {
+  if (!job) return;
+
+  if (job.kind === 'apply') {
+    lastSig = '';
+    refresh();
+    const d = job.result || {};
+    const what = (d.records || 0) + ' position' + (d.records === 1 ? '' : 's') + ' and ' +
+      (d.files || 0) + ' file' + (d.files === 1 ? '' : 's');
+    if (job.error) return toast('Stopped by an error after removing ' + what + ': ' + job.error);
+    return toast(d.stopped ? 'Stopped. ' + what + ' were removed before that.' : 'Tidied: ' + what + ' removed.');
+  }
+
+  if (job.error) return toast('Could not finish looking: ' + job.error);
+  if (job.cancelled || !job.plan) return toast('Stopped. Nothing was removed.');
+  const plan = job.plan;
 
   const nothing = !plan.staleRecords.length && !plan.art && !plan.subs;
   if (nothing) {
@@ -4220,14 +4873,11 @@ $('#btnTidy').onclick = async () => {
   if (!sure) return;
 
   try {
-    S = await post('/api/cleanup', { apply: true });
-    lastSig = '';
-    paint();
-    const d = S.cleaned || {};
-    toast('Tidied: ' + (d.records || 0) + ' position' + (d.records === 1 ? '' : 's') +
-      ' and ' + (d.files || 0) + ' file' + (d.files === 1 ? '' : 's') + ' removed.');
-  } catch (e) { toast(e.message); }
-};
+    const r = await post('/api/cleanup', { apply: true });
+    renderTidy(r.job);
+    await finishTidy(await watchTidy());
+  } catch (e) { renderTidy(null); toast(e.message); }
+}
 
 $('#btnResetDay').onclick = async () => {
   const A = scopedFolder();

@@ -14,9 +14,38 @@ const IS_MAC = process.platform === 'darwin';
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
+
+// Started from the desktop icon there is no console to print to, so the launcher
+// names a log file instead, and everything that would have been printed goes
+// there. Writing to the file directly, not to a pipe the launcher reads, is on
+// purpose: the launcher exits while a film is still playing, and a pipe with
+// nobody at the other end would take the server down with it.
+if (process.env.NAVFLIX_LOG) {
+  const logFile = process.env.NAVFLIX_LOG;
+  const util = require('util');
+  const write = (args) => {
+    const line = args.map((a) => (typeof a === 'string' ? a : util.inspect(a))).join(' ');
+    try { fs.appendFileSync(logFile, line + '\n'); } catch (e) { /* nowhere left to say it */ }
+  };
+  console.log = (...args) => write(args);
+  console.error = (...args) => write(args);
+  console.warn = (...args) => write(args);
+  process.on('uncaughtException', (e) => {
+    write(['NAVFLIX stopped with an error:', (e && e.stack) || String(e)]);
+    process.exit(1);
+  });
+}
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const PORT = Number(process.env.PORT || 8787);
+// The port NAVFLIX would like. If another program already has it, startServer()
+// moves up to the next free one, and PORT is whatever it actually got.
+const PORT_PREFERRED = Number(process.env.PORT || 6280);
+let PORT = PORT_PREFERRED;
+// Lets a copy that is starting up recognise one already running from this same
+// folder: the random id tells this process from any other, the hash says which
+// folder it runs from without saying where that is.
+const INSTANCE = crypto.randomBytes(8).toString('hex');
+const ROOT_TAG = crypto.createHash('sha1').update(path.resolve(ROOT).toLowerCase()).digest('hex').slice(0, 16);
 
 // ------------------------------------------------------------- portability
 //
@@ -297,13 +326,71 @@ function portCollection(c) {
   return c;
 }
 
-function load() {
-  let raw = null;
+// What the state file holds: the parsed object; null when there is no file yet;
+// or { unreadable: why } when there is a file and it cannot be read or parsed.
+//
+// Those last two used to be the same answer, and that is how a library was lost.
+// A failing drive refused to read state.json, NAVFLIX took "cannot read it" for
+// "there is none", started with an empty library, and its first save wrote that
+// empty library over the real one. A drive that cannot read a file one minute can
+// often still write one the next.
+function readStateFile(file) {
+  let text;
   try {
-    raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    text = fs.readFileSync(file, 'utf8');
   } catch (e) {
-    raw = null;
+    if (e && e.code === 'ENOENT') return null;
+    return { unreadable: (e && (e.code || e.message)) || 'could not be read' };
   }
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return { unreadable: 'it is not a progress file' };
+    return parsed;
+  } catch (e) {
+    return { unreadable: 'it is damaged' };
+  }
+}
+
+// There is a state file and it cannot be read. Never start empty over it:
+//   set it aside untouched, in case it can still be rescued;
+//   start from the newest daily backup that does read;
+//   and if none does, do not start at all, so nothing can be overwritten.
+// Plain functions and literals only: this runs from the top of the file, before
+// any constant declared further down has been initialised.
+function recoverState(why) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const aside = STATE_FILE + '.unreadable-' + stamp;
+  try { fs.copyFileSync(STATE_FILE, aside); } catch (e) { /* the drive may not allow even that */ }
+
+  const dir = path.join(DATA_DIR, 'backups');
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter((f) => /^state-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().reverse();
+  } catch (e) { /* no backups folder */ }
+
+  for (const name of names) {
+    const got = readStateFile(path.join(dir, name));
+    if (got && !got.unreadable && Array.isArray(got.collections)) {
+      console.log('');
+      console.log('   ! Your progress file could not be read (' + why + ').');
+      console.log('     It is kept, untouched, as ' + path.basename(aside) + ',');
+      console.log('     and NAVFLIX has started from the backup ' + name + ' instead.');
+      load.recoveredFrom = name;
+      return got;
+    }
+  }
+
+  console.log('');
+  console.log('   ! Your progress file could not be read (' + why + '), and no backup');
+  console.log('     in data/backups could be read either. NAVFLIX has not started, so');
+  console.log('     that nothing can be overwritten. If this is on an external drive,');
+  console.log('     check the drive first, then look in data/ and data/backups/.');
+  process.exit(1);
+}
+
+function load() {
+  let raw = readStateFile(STATE_FILE);
+  if (raw && raw.unreadable) raw = recoverState(raw.unreadable);
 
   // The portable format stores paths relative to the app folder. The first time
   // an older state file is read, keep a copy of it: the conversion is not
@@ -367,6 +454,8 @@ function load() {
         // whether it is a show. Refreshed whenever the folder is readable.
         isSeries: !!c.isSeries,
         seasonCount: Number(c.seasonCount) || 0,
+        // What happened the last time artwork was fetched, for the Artwork page.
+        artLast: (c.artLast && typeof c.artLast === 'object') ? c.artLast : null,
       })),
     };
   }
@@ -469,6 +558,25 @@ function saveNow() {
   clearTimeout(saveTimer);
   fs.mkdirSync(DATA_DIR, { recursive: true });
   backupIfDue();
+
+  // The last line of defence: an empty library never silently replaces a real
+  // one. Removing every folder on purpose still saves, but the file it replaces
+  // is copied into data/backups first, and if that copy cannot be made, nothing
+  // is written at all.
+  if (!state.collections.length) {
+    let size = 0;
+    try { size = fs.statSync(STATE_FILE).size; } catch (e) { /* no file yet */ }
+    if (size > 64 * 1024) {
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        fs.mkdirSync(path.join(DATA_DIR, 'backups'), { recursive: true });
+        fs.copyFileSync(STATE_FILE, path.join(DATA_DIR, 'backups', 'before-empty-' + stamp + '.json'));
+      } catch (e) {
+        console.log('   ! Not saving an empty library over the existing one, which could not be backed up first.');
+        return;
+      }
+    }
+  }
 
   const text = JSON.stringify(onDisk(state), null, 2);
   const tmp = STATE_FILE + '.tmp';
@@ -1715,12 +1823,18 @@ async function lookupTmdb(query, year, key) {
 async function lookupArtwork(title) {
   const { queries, year } = searchTerms(title);
   const key = (state.tmdbKey || '').trim();
+  let answered = false;
+  let failure = null;
   for (const q of queries) {
     try {
       const hit = key ? await lookupTmdb(q, year, key) : await lookupCinemeta(q, year);
+      answered = true;
       if (hit && hit.poster) return hit;
-    } catch (e) { /* try the next phrasing */ }
+    } catch (e) { failure = e; /* try the next phrasing */ }
   }
+  // No search got an answer at all: that is the network, not the film. Throwing
+  // keeps it from being filed as "looked for, nothing there" and never retried.
+  if (!answered && failure) throw failure;
   return null;
 }
 
@@ -1748,13 +1862,28 @@ async function downloadTo(url, dest) {
 async function episodeArtFor(c, item, force) {
   const ep = parseEpisode(item.rel);
   const meta = ep && c.seriesMeta && c.seriesMeta.episodes[ep.season + ':' + ep.episode];
-  if (!meta || !meta.thumbnail) return 'none';
+  if (!meta || !meta.thumbnail) {
+    // The show is identified and its episode list has no still for this one.
+    if (c.seriesMeta) rec(c, item.rel).artTried = true;
+    return 'none';
+  }
 
   const dest = cachedArtPath(c, item.rel, 'bg');
-  rec(c, item.rel).artTried = true;
-  if (!force && fs.existsSync(dest)) return 'kept';
+  if (!force && fs.existsSync(dest)) { rec(c, item.rel).artTried = true; return 'kept'; }
 
-  await downloadTo(meta.thumbnail, dest);
+  // Marked as tried only once there is an answer. It used to be marked before
+  // the download, so a dropped connection filed the episode under "looked for,
+  // nothing there" and it was never asked for again.
+  try {
+    await downloadTo(meta.thumbnail, dest);
+  } catch (e) {
+    if (/^HTTP 404|not an image|bad size/.test(e.message || '')) {
+      rec(c, item.rel).artTried = true;
+      return 'none';
+    }
+    throw e;
+  }
+  rec(c, item.rel).artTried = true;
   artCache.delete('bg|' + c.id + '|' + item.rel);
   return 'found';
 }
@@ -1781,30 +1910,72 @@ async function filmArtFor(c, item, force) {
   return 'found';
 }
 
+// A new season arrives with episodes the stored episode list has never heard of.
+// The list is asked for again when that happens, but not more often than every
+// few hours, so one special the catalogue simply does not have is not a reason
+// to download the whole list again on every run.
+const META_REFRESH = 6 * 60 * 60 * 1000;
+
+// Five failures in a row with nothing found in between means the catalogue is
+// out of reach, not that five titles have no artwork. Stop, rather than march
+// through the rest of the library failing.
+const ART_OFFLINE_AFTER = 5;
+
+// How a finished job is filed on its folder, so the Artwork page can say what
+// happened last time: complete, some not found, not identified, and so on.
+function finishArtJob(job, c) {
+  job.running = false;
+  job.finishedAt = Date.now();
+  if (!job.outcome) job.outcome = job.stopped ? 'stopped' : (job.failed ? 'partial' : 'complete');
+  c.artLast = {
+    at: new Date().toISOString(), outcome: job.outcome, name: c.name,
+    found: job.found, failed: job.failed, error: job.error || '',
+  };
+  saveNow();
+}
+
 // A series is one lookup for the whole show plus a still per episode — quite
 // unlike a film folder, where every entry is a separate title to identify.
-async function runSeriesArtJob(c, force) {
+//
+// opts.skipTried leaves out anything already looked for without success. The
+// Artwork page's "Get missing artwork" uses it, so a run is spent on what has
+// never been tried; a folder's own button, and "try again", ask for everything.
+async function runSeriesArtJob(c, force, opts) {
+  opts = opts || {};
   const shape = seriesShape(c);
   const queue = buildQueue(c);
-  artJob = {
-    collectionId: c.id, total: queue.length, done: 0, found: 0, failed: 0,
-    running: true, note: 'Cinemeta · series',
+  const job = artJob = {
+    collectionId: c.id, name: c.name, total: queue.length, done: 0, found: 0, failed: 0,
+    skipped: 0, running: true, note: 'Cinemeta · series', phase: 'identifying',
   };
 
+  const had = c.seriesMeta;
+  const unheardOf = !!had && queue.some((m) =>
+    m.needsArt && m.season != null && !had.episodes[m.season + ':' + m.episode]);
+  const stale = unheardOf && Date.now() - (Date.parse(had.at) || 0) > META_REFRESH;
   try {
-    if (!c.seriesMeta || force) await fetchSeriesMeta(c, shape);
+    if (!had || force || stale) {
+      await fetchSeriesMeta(c, shape);
+      // A fresh episode list must not cost the cast and crew already looked up.
+      if (had && had.info && c.seriesMeta && c.seriesMeta !== had &&
+          c.seriesMeta.imdb === had.imdb && !c.seriesMeta.info) {
+        c.seriesMeta.info = had.info;
+      }
+    }
   } catch (e) { /* handled by the check below */ }
 
   if (!c.seriesMeta) {
-    artJob.done = queue.length;
-    artJob.failed = queue.length;
-    artJob.running = false;
-    artJob.error = 'Could not identify the show "' + shape.show + '".';
-    return;
+    job.done = queue.length;
+    job.failed = queue.length;
+    job.outcome = 'unidentified';
+    job.error = 'Could not identify the show from the name "' + (shape.show || c.name) + '".';
+    return finishArtJob(job, c);
   }
+  job.phase = 'images';
 
   // One poster and one backdrop for the show itself.
   for (const kind of ['', 'bg']) {
+    if (!job.running) break;
     const url = kind === 'bg' ? c.seriesMeta.background : c.seriesMeta.poster;
     const dest = showArtPath(c, kind);
     if (!url) continue;
@@ -1814,54 +1985,187 @@ async function runSeriesArtJob(c, force) {
   artCache.clear();
 
   // Then the per-episode still, which is what the billboard shows.
+  let failedInARow = 0;
   for (const item of queue) {
-    if (!artJob || !artJob.running) break;
-    artJob.done++;
+    if (!job.running) { job.stopped = true; break; }
+    job.done++;
+    if (!force && !item.needsArt) continue;                              // has one already
+    if (!force && opts.skipTried && item.artTried) { job.skipped++; continue; }
 
     let outcome;
     try { outcome = await episodeArtFor(c, item, force); }
     catch (e) { outcome = 'error'; }
 
-    if (outcome === 'none') { artJob.failed++; continue; }     // no still exists
-    if (outcome === 'kept') { artJob.found++; continue; }      // already on disk
-    if (outcome === 'error') artJob.failed++; else artJob.found++;
+    if (outcome === 'kept') continue;
+    if (outcome === 'none') { job.failed++; continue; }                  // no still exists
+    if (outcome === 'found') {
+      job.found++;
+      failedInARow = 0;
+    } else {
+      job.failed++;
+      if (++failedInARow >= ART_OFFLINE_AFTER) {
+        job.outcome = 'offline';
+        job.error = 'Could not reach the image server. Check the connection and try again.';
+        break;
+      }
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  saveNow();
-  artJob.running = false;
-  artJob.finishedAt = Date.now();
+  return finishArtJob(job, c);
 }
 
-async function runArtJob(c, force) {
-  if (seriesShape(c)) return runSeriesArtJob(c, force);
+async function runArtJob(c, force, opts) {
+  if (seriesShape(c)) return runSeriesArtJob(c, force, opts);
+  opts = opts || {};
 
   const queue = buildQueue(c);
-  artJob = {
-    collectionId: c.id, total: queue.length, done: 0, found: 0, failed: 0,
-    running: true, note: (state.tmdbKey || '').trim() ? 'TMDB' : 'Cinemeta',
+  const job = artJob = {
+    collectionId: c.id, name: c.name, total: queue.length, done: 0, found: 0, failed: 0,
+    skipped: 0, running: true, note: (state.tmdbKey || '').trim() ? 'TMDB' : 'Cinemeta',
+    phase: 'images',
   };
 
+  let failedInARow = 0;
   for (const item of queue) {
-    if (!artJob || !artJob.running) break;
-    artJob.done++;
+    if (!job.running) { job.stopped = true; break; }
+    job.done++;
+    if (!force && !item.needsArt) continue;                              // already covered
+    if (!force && opts.skipTried && item.artTried) { job.skipped++; continue; }
 
     let outcome;
     try { outcome = await filmArtFor(c, item, force); }
     catch (e) { outcome = 'error'; }
 
-    if (outcome === 'kept') continue;                        // already covered
-    if (outcome === 'found') artJob.found++; else artJob.failed++;
+    if (outcome === 'kept') continue;
+    if (outcome === 'found') {
+      job.found++;
+      failedInARow = 0;
+    } else {
+      job.failed++;
+      if (outcome === 'error' && ++failedInARow >= ART_OFFLINE_AFTER) {
+        job.outcome = 'offline';
+        job.error = 'Could not reach the catalogue. Check the connection and try again.';
+        break;
+      }
+    }
     save();
     // Be a polite guest on a free public API.
     await new Promise((r) => setTimeout(r, 320));
   }
-  saveNow();
+  return finishArtJob(job, c);
+}
 
-  if (artJob) {
-    artJob.running = false;
-    artJob.finishedAt = Date.now();
+// ------------------------------------------------------------ the Artwork page
+//
+// Artwork used to be collected in the background as well, and that is exactly
+// how it got stuck. A show the catalogue could not identify from its folder name
+// was never marked as tried, so every fifteen seconds the sweep went straight
+// back to it; and because the open folder always goes first, nothing behind it
+// ever got a turn. Nobody could see that happening, or stop it.
+//
+// So artwork is now fetched only when you start it: one folder after another,
+// with the folder, the count and the outcome on screen, and a Stop that works.
+// A show that cannot be identified is reported, and left out of the next run
+// until its name changes or you ask to try again. It is never retried in a loop.
+
+let artRun = null;
+// { running, stopping, stopped, ids, index, retry, results, error, startedAt, finishedAt }
+
+function artReachable(c) {
+  try { return !!c.path && fs.existsSync(c.path); } catch (e) { return false; }
+}
+
+// One folder, as the page lists it.
+function artSummary(c) {
+  const base = { id: c.id, name: c.name, last: c.artLast || null };
+  if (!artReachable(c)) return Object.assign(base, { missing: true });
+  const queue = buildQueue(c);
+  const have = queue.filter((m) => !m.needsArt).length;
+  const tried = queue.filter((m) => m.needsArt && m.artTried).length;
+  const pick = queue.find((m) => m.art || m.backdrop);
+  const series = !!seriesShape(c);
+  return Object.assign(base, {
+    missing: false,
+    series: series,
+    total: queue.length,
+    have: have,
+    tried: tried,                          // looked for, and nothing was found
+    todo: queue.length - have - tried,     // never looked for
+    matched: series && c.seriesMeta ? (c.seriesMeta.name || '') : '',
+    cover: pick ? (pick.art || pick.backdrop) : null,
+  });
+}
+
+// Searching the same wrong name twice finds the same nothing.
+function artStuck(c) {
+  return !!(c.artLast && c.artLast.outcome === 'unidentified' && c.artLast.name === c.name);
+}
+
+// What "Get missing artwork" works through.
+function artCandidates(retry) {
+  const out = [];
+  for (const c of state.collections) {
+    const s = artSummary(c);
+    if (s.missing || !s.total) continue;
+    if (retry ? s.todo + s.tried > 0 : (s.todo > 0 && !artStuck(c))) out.push(c.id);
   }
+  return out;
+}
+
+async function runArtBatch(ids, retry) {
+  const run = artRun = {
+    running: true, stopping: false, stopped: false, ids: ids, index: 0, retry: retry,
+    results: [], error: '', startedAt: Date.now(), finishedAt: 0,
+  };
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      if (run.stopping) break;
+      run.index = i;
+      const c = findCollection(ids[i]);
+      if (!c) continue;
+      if (!artReachable(c)) {
+        run.results.push({ id: c.id, name: c.name, outcome: 'unreachable', found: 0, failed: 0, error: '' });
+        continue;
+      }
+      let job;
+      try {
+        await runArtJob(c, false, { skipTried: !retry });
+        job = artJob;
+      } catch (e) {
+        job = { outcome: 'error', found: 0, failed: 0, error: (e && e.message) || String(e) };
+        if (artJob && artJob.running) artJob.running = false;
+      }
+      run.results.push({
+        id: c.id, name: c.name, outcome: job.outcome, found: job.found, failed: job.failed, error: job.error || '',
+      });
+      if (job.outcome === 'offline') { run.error = job.error; break; }
+      if (job.outcome === 'stopped') break;
+    }
+  } finally {
+    run.stopped = !run.error && (run.stopping || run.results.length < ids.length);
+    run.running = false;
+    run.finishedAt = Date.now();
+    saveNow();
+  }
+}
+
+function artStatus() {
+  const r = artRun;
+  const j = artJob;
+  return {
+    run: r ? {
+      running: r.running, stopping: r.stopping, stopped: !!r.stopped, total: r.ids.length,
+      index: r.index, retry: r.retry, results: r.results, error: r.error,
+      startedAt: r.startedAt, finishedAt: r.finishedAt,
+    } : null,
+    job: j ? {
+      collectionId: j.collectionId, name: j.name || '', total: j.total, done: j.done,
+      found: j.found, failed: j.failed, skipped: j.skipped || 0, running: !!j.running,
+      phase: j.phase || '', outcome: j.outcome || '', error: j.error || '',
+    } : null,
+    catalogue: (state.tmdbKey || '').trim() ? 'TMDB' : 'Cinemeta',
+  };
 }
 
 // ------------------------------------------------------------ backup and restore
@@ -1975,30 +2279,77 @@ function importState(body) {
 // really are not there — and pruning on that basis would wipe the progress for a
 // whole library because a cable was out. So a collection that cannot be read is
 // skipped entirely, and its artwork counts as spoken for.
-function cleanupPlan() {
+//
+// It runs as a job, one question to the disk at a time, instead of in one go.
+// Asked all at once, a few thousand "is this file still there?" checks held the
+// whole server until the drive had answered every one, and on a slow or
+// struggling drive that is minutes in which nothing else, Save included, could
+// be answered. Awaiting each check leaves the server free in between.
+//
+// And only "no such file" counts as gone. existsSync says false for any failure
+// at all, so a drive returning read errors made files sitting right there look
+// deleted, and offered their positions up for removal.
+
+let tidyJob = null;
+// { kind: 'look' | 'apply', running, phase, done, total, current, startedAt,
+//   phaseAt, finishedAt, cancel, error, plan, result }
+
+const TIDY_FRESH = 15 * 60 * 1000;   // how long a finished look may still be acted on
+
+// true: it is there. false: the disk says there is no such file. null: the disk
+// could not say, which is treated as there.
+async function tidyExists(p) {
+  try { await fs.promises.access(p); return true; }
+  catch (e) { return e && (e.code === 'ENOENT' || e.code === 'ENOTDIR') ? false : null; }
+}
+
+async function tidyFolderReadable(dir) {
+  if (!dir) return false;
+  try { return (await fs.promises.stat(dir)).isDirectory(); }
+  catch (e) { return false; }
+}
+
+// Everything cached under one record: its poster, its backdrop, its subtitle,
+// and the untouched copy kept when a subtitle is re-timed.
+function tidyKeep(keep, c, rel) {
+  const k = crypto.createHash('sha1').update(c.id + '|' + rel).digest('hex');
+  keep[k + '.jpg'] = true;
+  keep[k + '-bg.jpg'] = true;
+  keep[k + '.srt'] = true;
+  keep[k + '.srt.orig'] = true;
+}
+
+function tidyAbs(c, rel) {
+  return path.join(c.path, rel.split('/').join(path.sep));
+}
+
+function tidyPhase(j, phase, total) {
+  j.phase = phase;
+  j.done = 0;
+  j.total = total;
+  j.current = '';
+  j.phaseAt = Date.now();
+}
+
+async function tidyLook(j) {
   const staleRecords = [];      // { id, collection, name, rel }
   const keep = {};              // basename -> true, for art and subs alike
   let skipped = 0;
 
-  for (const c of state.collections) {
-    let reachable = false;
-    try { reachable = !!c.path && fs.existsSync(c.path); } catch (e) { reachable = false; }
+  const collections = state.collections.slice();
+  tidyPhase(j, 'records', collections.reduce((t, c) => t + Object.keys(c.progress || {}).length, 0));
 
-    const key = (rel) => crypto.createHash('sha1').update(c.id + '|' + rel).digest('hex');
-    keep[key('__show__') + '.jpg'] = true;
-    keep[key('__show__') + '-bg.jpg'] = true;
-
+  for (const c of collections) {
+    if (j.cancel) return;
+    j.current = c.name;
+    tidyKeep(keep, c, '__show__');
     const rels = Object.keys(c.progress || {});
 
-    if (!reachable) {
+    if (!(await tidyFolderReadable(c.path))) {
       // Unreadable: keep every record and everything filed under it.
       skipped++;
-      rels.forEach((rel) => {
-        keep[key(rel) + '.jpg'] = true;
-        keep[key(rel) + '-bg.jpg'] = true;
-        keep[key(rel) + '.srt'] = true;
-        keep[key(rel) + '.srt.orig'] = true;
-      });
+      rels.forEach((rel) => tidyKeep(keep, c, rel));
+      j.done += rels.length;
       continue;
     }
 
@@ -2007,87 +2358,158 @@ function cleanupPlan() {
     // skips anything under 20 MB as a sample or a featurette, so a real short
     // that is still sitting there does not appear in it. Pruning on that basis
     // would delete the progress for a file you can see in the folder.
-    const present = (rel) => {
-      try { return fs.existsSync(path.join(c.path, rel.split('/').join(path.sep))); }
-      catch (e) { return true; }   // unreadable is not the same as absent
-    };
-
-    rels.forEach((rel) => {
-      if (present(rel)) {
-        keep[key(rel) + '.jpg'] = true;
-        keep[key(rel) + '-bg.jpg'] = true;
-        keep[key(rel) + '.srt'] = true;
-        keep[key(rel) + '.srt.orig'] = true;
-      } else {
+    const gone = [];
+    for (const rel of rels) {
+      if (j.cancel) return;
+      if ((await tidyExists(tidyAbs(c, rel))) === false) {
         // Addressed by id, not by name: two folders may be called the same
         // thing, and deleting from the wrong one would be silent.
-        staleRecords.push({ id: c.id, collection: c.name, rel: rel, name: rel.split('/').pop() });
+        gone.push({ id: c.id, collection: c.name, rel: rel, name: rel.split('/').pop() });
+      } else {
+        tidyKeep(keep, c, rel);
       }
-    });
+      j.done++;
+    }
+
+    // A drive that drops out halfway through a folder makes every file after
+    // that point look deleted. So the folder has to still be there once its
+    // files have been checked, or nothing found missing in it counts.
+    if (gone.length && !(await tidyFolderReadable(c.path))) {
+      skipped++;
+      gone.forEach((r) => tidyKeep(keep, c, r.rel));
+      continue;
+    }
+    staleRecords.push(...gone);
   }
 
-  const listOrphans = (dir) => {
-    let files = [];
-    try { files = fs.readdirSync(dir); } catch (e) { return []; }
-    const out = [];
-    for (const f of files) {
-      if (keep[f]) continue;
-      let size = 0;
-      try { size = fs.statSync(path.join(dir, f)).size; } catch (e) { continue; }
-      out.push({ file: f, size: size });
-    }
-    return out;
+  tidyPhase(j, 'files', 0);       // 0 until the listings are in: the bar just moves
+  const listing = async (dir) => {
+    try { return await fs.promises.readdir(dir); } catch (e) { return []; }
   };
+  const candidates = [];
+  for (const [dir, kind] of [[ART_DIR, 'art'], [SUB_DIR, 'subs']]) {
+    for (const f of await listing(dir)) if (!keep[f]) candidates.push({ dir: dir, kind: kind, file: f });
+  }
+  j.total = candidates.length;
 
-  const art = listOrphans(ART_DIR);
-  const subs = listOrphans(SUB_DIR);
-  const bytes = art.concat(subs).reduce((t, f) => t + f.size, 0);
+  const art = [];
+  const subs = [];
+  let bytes = 0;
+  for (const f of candidates) {
+    if (j.cancel) return;
+    try {
+      const st = await fs.promises.stat(path.join(f.dir, f.file));
+      if (st.isFile()) {
+        bytes += st.size;
+        (f.kind === 'art' ? art : subs).push(f.file);
+      }
+    } catch (e) { /* gone already, or unreadable: leave it be */ }
+    j.done++;
+  }
 
-  return {
+  j.plan = {
     staleRecords: staleRecords,
     art: art.length,
     subs: subs.length,
     bytes: bytes,
     bytesText: niceSize(bytes),
     skipped: skipped,
-    _artFiles: art.map((f) => f.file),
-    _subFiles: subs.map((f) => f.file),
+    _artFiles: art,
+    _subFiles: subs,
   };
 }
 
-function runCleanup() {
-  const plan = cleanupPlan();
-
+// Acts on a look that may be minutes old, so nothing is taken on its word. A
+// record goes only if its file is still missing and its folder still readable
+// right now, and a cached file goes only if no record left in the state still
+// claims it. A file put back in the meantime keeps its position and its poster.
+async function tidyApply(j, plan) {
+  tidyPhase(j, 'records', plan.staleRecords.length);
+  let records = 0;
   for (const r of plan.staleRecords) {
+    if (j.cancel) break;
     const c = state.collections.find((x) => x.id === r.id);
-    if (c && c.progress) delete c.progress[r.rel];
+    j.current = r.collection;
+    if (c && c.progress && c.progress[r.rel] &&
+        (await tidyExists(tidyAbs(c, r.rel))) === false &&
+        (await tidyFolderReadable(c.path))) {
+      delete c.progress[r.rel];
+      records++;
+    }
+    j.done++;
   }
-  let removed = 0;
-  const drop = (dir, files) => files.forEach((f) => {
-    try { fs.unlinkSync(path.join(dir, f)); removed++; } catch (e) { /* already gone */ }
-  });
-  drop(ART_DIR, plan._artFiles);
-  drop(SUB_DIR, plan._subFiles);
+  if (records) saveNow();
+
+  let files = 0;
+  if (!j.cancel) {
+    const claimed = {};
+    for (const c of state.collections) {
+      tidyKeep(claimed, c, '__show__');
+      Object.keys(c.progress || {}).forEach((rel) => tidyKeep(claimed, c, rel));
+    }
+    const doomed = plan._artFiles.map((f) => [ART_DIR, f])
+      .concat(plan._subFiles.map((f) => [SUB_DIR, f]))
+      .filter((pair) => !claimed[pair[1]]);
+    tidyPhase(j, 'files', doomed.length);
+    for (const [dir, f] of doomed) {
+      if (j.cancel) break;
+      try { await fs.promises.unlink(path.join(dir, f)); files++; } catch (e) { /* already gone */ }
+      j.done++;
+    }
+  }
 
   artCache.clear();
   stampCache.clear();
-  saveNow();
-  return { records: plan.staleRecords.length, files: removed, bytesText: plan.bytesText };
+  j.result = { records: records, files: files, bytesText: plan.bytesText, stopped: !!j.cancel };
+}
+
+function tidyStart(kind, work) {
+  const j = {
+    kind: kind, running: true, phase: '', done: 0, total: 0, current: '',
+    startedAt: Date.now(), phaseAt: Date.now(), finishedAt: 0,
+    cancel: false, error: '', plan: null, result: null,
+  };
+  tidyJob = j;
+  Promise.resolve()
+    .then(() => work(j))
+    .catch((e) => { j.error = (e && e.message) || String(e); })
+    .then(() => { j.running = false; j.finishedAt = Date.now(); });
+}
+
+// What the page is shown. The file lists stay here: they are only needed to
+// act, and a few thousand names is a lot to send on every poll.
+function tidyStatus() {
+  const j = tidyJob;
+  if (!j) return { job: null };
+  const job = {
+    kind: j.kind, running: j.running, phase: j.phase, done: j.done, total: j.total,
+    current: j.current, phaseElapsed: Date.now() - j.phaseAt,
+    cancelled: j.cancel, error: j.error,
+  };
+  if (!j.running && j.plan) {
+    job.plan = Object.assign({}, j.plan);
+    delete job.plan._artFiles;
+    delete job.plan._subFiles;
+  }
+  if (j.result) job.result = j.result;
+  return { job: job };
 }
 
 // ------------------------------------------------------------ background work
 //
-// Details and Get artwork are both deliberate, per-collection, and started by
-// pressing a button. With eighty folders that is eighty presses, which is why
-// most of a library never gets either done. This performs the same work a
-// little at a time, in the gaps when nothing else is going on.
+// Details is deliberate, per-collection, and started by pressing a button. With
+// eighty folders that is eighty presses, which is why most of a library never
+// gets it done. This performs the same work a little at a time, in the gaps
+// when nothing else is going on.
 //
 // Two switches rather than one, because the halves are not alike:
 //
-//   Reading a file header touches nothing but your own disk. On by default.
-//   Cast, crew and artwork come from a public catalogue, and the promise made
-//   everywhere else in this program is that it only goes out to the network
-//   when you ask it to. Off until you say otherwise.
+//   Reading a file header touches nothing but your own disk.
+//   Cast and crew come from a public catalogue, over the network.
+//
+// Artwork is no longer done here; see the Artwork page. Unattended, one folder
+// the catalogue could not identify held the whole sweep up, and nobody could
+// see it happening or stop it.
 //
 // Nothing here is allowed to compete with you. A slice is small, it stops the
 // moment you press play, and the whole sweep goes quiet once there is nothing
@@ -2097,6 +2519,8 @@ const SWEEP_EVERY = 15000;      // between slices
 const SWEEP_READS = 25;         // file headers per slice; roughly two seconds of disk
 const SWEEP_CALLS = 6;          // catalogue requests per slice
 const SWEEP_QUIET = 600000;     // how long to rest after a pass finds no work
+const SWEEP_OFFLINE = 300000;   // how long to rest when the catalogue cannot be reached
+const INFO_RETRY = 24 * 60 * 60 * 1000;   // before asking again for credits a show did not have
 
 let sweeping = false;
 let sweepQuietUntil = 0;
@@ -2110,6 +2534,8 @@ function sweepIdle() {
   if (artJob && artJob.running) return false;
   if (detailJob && detailJob.running) return false;
   if (subJob && subJob.running) return false;
+  if (tidyJob && tidyJob.running) return false;
+  if (artRun && artRun.running) return false;
   return true;
 }
 
@@ -2158,8 +2584,15 @@ async function sweepInfoOne(c) {
     // artwork sweep does. Until then this folder has no credits work to offer.
     if (!c.seriesMeta || !c.seriesMeta.imdb) return false;
     if (c.seriesMeta.info) return false;
+    // The trap the artwork sweep fell into: a show the catalogue has no credits
+    // for came straight back every fifteen seconds and, being the open folder,
+    // went first every time. One attempt, then leave it for a day.
+    if (Date.now() - (Number(c.seriesMeta.infoTriedAt) || 0) < INFO_RETRY) return false;
     sweepNote = { kind: 'info', collection: c.name, left: 1 };
-    try { await fetchShowInfo(c); } catch (e) { /* another slice */ }
+    let offline = false;
+    try { await fetchShowInfo(c); } catch (e) { offline = true; }
+    if (offline) sweepQuietUntil = Date.now() + SWEEP_OFFLINE;
+    else if (c.seriesMeta && !c.seriesMeta.info) c.seriesMeta.infoTriedAt = Date.now();
     saveNow();
     return true;
   }
@@ -2183,43 +2616,12 @@ async function sweepInfoOne(c) {
       // Either way the attempt is recorded. Unattended work must not return to
       // a title the catalogue cannot name every fifteen seconds forever.
       r.infoTried = true;
-    } catch (e) { /* the network can fail; leave it for next time */ }
+    } catch (e) {
+      // Offline, most likely. Asking again every fifteen seconds changes nothing.
+      sweepQuietUntil = Date.now() + SWEEP_OFFLINE;
+      break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
-    if (++n >= SWEEP_CALLS) break;
-  }
-  saveNow();
-  return true;
-}
-
-// Artwork, at the same pace the button uses. A show has to be identified before
-// any of its stills can be looked up, so that comes first and costs a slice of
-// its own.
-async function sweepArtOne(c) {
-  const series = seriesShape(c);
-  const todo = buildQueue(c).filter((m) => m.needsArt && !m.artTried);
-  if (!todo.length) return false;
-
-  sweepNote = { kind: 'art', collection: c.name, left: todo.length };
-
-  if (series && !c.seriesMeta) {
-    try { await fetchSeriesMeta(c, series); } catch (e) { /* another time */ }
-    saveNow();
-    return true;
-  }
-
-  let n = 0;
-  for (const item of todo) {
-    if (!sweepIdle()) break;
-    try {
-      const outcome = series
-        ? await episodeArtFor(c, item, false)
-        : await filmArtFor(c, item, false);
-      // Work nobody is watching must not come back to the same file every
-      // fifteen seconds. An episode the catalogue has no still for is marked
-      // as attempted here, which pressing the button deliberately does not do.
-      if (outcome === 'none') rec(c, item.rel).artTried = true;
-    } catch (e) { /* the network can fail; try again next slice */ }
-    await new Promise((resolve) => setTimeout(resolve, series ? 200 : 320));
     if (++n >= SWEEP_CALLS) break;
   }
   saveNow();
@@ -2236,14 +2638,14 @@ function wakeSweep() {
 // The order the three kinds of work are taken in, which decides what you see
 // happen and when.
 //
-// The folder you have open is finished completely first — headers, artwork and
-// credits — because that is the one you are looking at, and a folder quietly
+// The folder you have open is finished completely first, headers and then
+// credits, because that is the one you are looking at, and a folder quietly
 // twentieth in line is indistinguishable from a feature that does not work.
 //
 // After that, the cheapest kind across the whole library before the dearest.
 // Reading headers is local and quick, so a whole shelf of runtimes and
-// resolutions arrives in half an hour; artwork and credits are network-bound
-// and take hours, and would otherwise hold the quick work up behind them.
+// resolutions arrives in half an hour; credits are network-bound and take
+// hours, and would otherwise hold the quick work up behind them.
 async function sweepStep() {
   const scan = state.backgroundScan !== false;
   const net = state.backgroundFetch !== false;
@@ -2254,12 +2656,10 @@ async function sweepStep() {
   const open = folders[0];
   if (open && open.id === state.activeId) {
     if (scan && await sweepScanOne(open)) return true;
-    if (net && await sweepArtOne(open)) return true;
     if (net && await sweepInfoOne(open)) return true;
   }
 
   if (scan) for (const c of folders) if (await sweepScanOne(c)) return true;
-  if (net) for (const c of folders) if (await sweepArtOne(c)) return true;
   if (net) for (const c of folders) if (await sweepInfoOne(c)) return true;
   return false;
 }
@@ -2843,6 +3243,10 @@ function play(c, index, extraSeconds) {
     '--http-port=' + httpPort,
     '--http-password=' + password,
   ];
+  // A VLC that has never been run, like the one the installer carries, opens with
+  // a privacy question and can offer updates, both on top of the film. Settled
+  // here instead. Windows only: these belong to the Qt interface VLC uses there.
+  if (IS_WIN) args.push('--no-qt-privacy-ask', '--no-qt-updates-notif');
   // Subtitles: an embedded track, an external file, or none at all.
   const sub = subTarget(c, item.rel);
   if (sub.off) args.push('--no-spu');
@@ -3055,6 +3459,13 @@ function apply(json) {
 }
 
 function finish() {
+  finishSession();
+  // The app window was closed while this was playing (see "stopping"): now the
+  // position is saved, it is safe to stop.
+  if (quitAfterPlayback && !session) quitNow();
+}
+
+function finishSession() {
   if (!session) return;
   const s = session;
   session = null;
@@ -3299,6 +3710,14 @@ function snapshot(local) {
       fetch: state.backgroundFetch !== false,
       note: sweepNote,
     },
+    // Where this copy is listening, for the address at the foot of the page.
+    // Only for this machine, like the pairing code below.
+    // `lan` is whether this process is really listening on the network. Switching
+    // the remote on only takes effect at the next start, and until then the
+    // phone address would lead nowhere.
+    server: local
+      ? { url: 'http://localhost:' + PORT, port: PORT, preferred: PORT_PREFERRED, lan: HOST !== '127.0.0.1' }
+      : null,
     remote: {
       enabled: !!state.remote.enabled,
       // The code and the addresses are only ever sent to this machine. A paired
@@ -3386,6 +3805,10 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  // The typeface ships with the app (public/fonts), so every machine draws the
+  // same letters instead of whatever its system happens to have.
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 // Requests from this machine are trusted exactly as before. Anything arriving
@@ -3518,6 +3941,16 @@ const server = http.createServer(async (req, res) => {
     if (!trustedHost(req)) {
       return json(res, 403, { error: 'Refused: that address is not this server.' });
     }
+
+    // Asked by a copy of NAVFLIX that is starting up (see startServer), to tell
+    // "another program has this port" from "NAVFLIX from this folder is already
+    // here". A hash of the folder, not the folder itself.
+    if (p === '/api/whoami') {
+      return json(res, 200, { app: 'navflix', root: ROOT_TAG, instance: INSTANCE });
+    }
+    // An open window asks for this every few seconds, which is how the server
+    // knows someone is still using it (see "stopping").
+    if (p === '/api/state') markSeen();
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       const why = crossSiteReason(req);
       if (why) return json(res, 403, { error: 'Refused because ' + why + '.' });
@@ -3527,8 +3960,11 @@ const server = http.createServer(async (req, res) => {
       if (!state.remote.enabled) return json(res, 403, { error: 'The remote is switched off.' });
 
       // The remote page and its assets load before there is a token to send.
+      // The fonts too: a stylesheet request never carries the token, so even a
+      // paired phone would be refused them and fall back to its own typeface.
       const isPublic = p === '/remote' || p === '/remote.html' ||
-        p === '/manifest.webmanifest' || p.startsWith('/icon-') || p.startsWith('/favicon');
+        p === '/manifest.webmanifest' || p.startsWith('/icon-') || p.startsWith('/favicon') ||
+        p.startsWith('/fonts/');
 
       if (p === '/api/remote/pair' && req.method === 'POST') {
         const ip = req.socket.remoteAddress || '?';
@@ -3783,6 +4219,9 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/art/fetch' && req.method === 'POST') {
       const b = await readBody(req);
+      if (artRun && artRun.running) {
+        return json(res, 409, { error: 'Artwork is already being fetched from the Artwork page.' });
+      }
       if (artJob && artJob.running) return json(res, 400, { error: 'Already fetching posters.' });
       const c = target(b);
       if (!c.path || !fs.existsSync(c.path)) return json(res, 400, { error: 'That folder is not reachable.' });
@@ -3791,8 +4230,42 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (p === '/api/art/cancel' && req.method === 'POST') {
-      if (artJob) artJob.running = false;
+      if (artJob && artJob.running) { artJob.running = false; artJob.stopped = true; }
       return json(res, 200, snapshot(local));
+    }
+
+    // The Artwork page. Local only, like everything that goes to the network on
+    // your behalf: none of these are in REMOTE_ALLOWED.
+    if (p === '/api/artwork' && req.method === 'GET') {
+      const out = artStatus();
+      if (url.searchParams.get('list')) out.folders = state.collections.map(artSummary);
+      return json(res, 200, out);
+    }
+
+    if (p === '/api/artwork/start' && req.method === 'POST') {
+      const b = await readBody(req);
+      if ((artRun && artRun.running) || (artJob && artJob.running)) {
+        return json(res, 409, { error: 'Artwork is already being fetched. Stop it first, or let it finish.' });
+      }
+      const retry = b.retry === true;
+      const ids = Array.isArray(b.ids)
+        ? b.ids.map(String).filter((id) => findCollection(id))
+        : artCandidates(retry);
+      if (!ids.length) {
+        return json(res, 400, {
+          error: retry
+            ? 'No folder is missing artwork.'
+            : 'Nothing new to look for. Tick "try again" to retry titles that found nothing before.',
+        });
+      }
+      runArtBatch(ids, retry);
+      return json(res, 200, artStatus());
+    }
+
+    if (p === '/api/artwork/stop' && req.method === 'POST') {
+      if (artRun && artRun.running) artRun.stopping = true;
+      if (artJob && artJob.running) { artJob.running = false; artJob.stopped = true; }
+      return json(res, 200, artStatus());
     }
 
     // Hands the token back. Doing this only on the phone would leave a working
@@ -4058,16 +4531,57 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, Object.assign(snapshot(local), { imported: info }));
     }
 
+    // A job rather than a request that waits for its answer (see tidyLook). GET
+    // says how it is going; POST starts a look, acts on a finished one, or stops.
+    // Local only: not in REMOTE_ALLOWED, so a paired phone gets 403.
+    if (p === '/api/cleanup' && req.method === 'GET') return json(res, 200, tidyStatus());
     if (p === '/api/cleanup' && req.method === 'POST') {
       const b = await readBody(req);
-      if (b.apply !== true) {
-        const plan = cleanupPlan();
-        delete plan._artFiles;
-        delete plan._subFiles;
-        return json(res, 200, plan);
+      const busy = !!(tidyJob && tidyJob.running);
+      if (b.cancel === true) {
+        if (busy) tidyJob.cancel = true;
+        return json(res, 200, tidyStatus());
       }
-      const done = runCleanup();
-      return json(res, 200, Object.assign(snapshot(local), { cleaned: done }));
+      if (b.apply === true) {
+        if (busy) return json(res, 409, { error: 'Still working. Wait for it to finish first.' });
+        const prev = tidyJob;
+        const usable = prev && prev.kind === 'look' && prev.plan && !prev.cancel && !prev.error &&
+          Date.now() - prev.finishedAt < TIDY_FRESH;
+        if (!usable) return json(res, 409, { error: 'That list is out of date. Look for leftovers again.' });
+        tidyStart('apply', (j) => tidyApply(j, prev.plan));
+        return json(res, 200, tidyStatus());
+      }
+      // Already looking, from this page or another: report that one, never start a second.
+      if (!busy) tidyStart('look', tidyLook);
+      return json(res, 200, tidyStatus());
+    }
+
+    // Sent by the desktop launcher once the app window has closed (see
+    // "stopping"). Local only: not in REMOTE_ALLOWED, so a paired phone gets 403,
+    // and like every POST it has to pass the cross-site checks above.
+    //
+    //   {}               stop, but let a film that is playing finish first
+    //   { cancel: true } NAVFLIX was opened again while waiting: stay
+    //   { force: true }  stop now, VLC included (the uninstaller)
+    if (p === '/api/quit' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (b.cancel === true) {
+        quitAfterPlayback = false;
+        markSeen();
+        return json(res, 200, { quitting: false });
+      }
+      if (b.force === true) {
+        json(res, 200, { quitting: true, waitingForPlayback: false });
+        if (session) { stopSession(); setTimeout(quitNow, 1500); } else setTimeout(quitNow, 250);
+        return;
+      }
+      if (session) {
+        quitAfterPlayback = true;
+        return json(res, 200, { quitting: true, waitingForPlayback: true });
+      }
+      json(res, 200, { quitting: true, waitingForPlayback: false });
+      setTimeout(quitNow, 250);
+      return;
     }
 
     if (p === '/api/reset-all' && req.method === 'POST') {
@@ -4115,30 +4629,118 @@ function openBrowser(url) {
 // Loopback only unless you have deliberately switched the remote on.
 const HOST = state.remote.enabled ? '0.0.0.0' : '127.0.0.1';
 
-server.on('error', (e) => {
-  if (e.code !== 'EADDRINUSE') throw e;
-  console.log('');
-  console.log('   Port ' + PORT + ' is already taken on ' + HOST + '.');
-  if (HOST !== '127.0.0.1') {
-    console.log('');
-    console.log('   The phone remote is on, so NAVFLIX needs the port on every');
-    console.log('   network interface, not just this machine. Something else already');
-    console.log('   holds it there - a debugger agent or a dev server will do this');
-    console.log('   without ever showing up when NAVFLIX was loopback only.');
-  }
-  console.log('');
-  console.log('   Either stop whatever is using it, or run NAVFLIX on another port:');
-  console.log('     set PORT=8788 && node server.js        (Windows)');
-  console.log('     PORT=8788 node server.js               (macOS, Linux)');
-  console.log('');
-  process.exit(1);
-});
+// ---- finding a port
+//
+// The default used to be 8787, which is also where JBoss and WildFly put their
+// debugger, so on a machine used for work the two kept colliding. 6280 is not the
+// default of any server, debugger or media tool likely to be on the same machine.
+// It can still be taken, so rather than refuse to start, NAVFLIX works up from it
+// to the first port that is really free, and the foot of the app shows the
+// address it ended up on.
+//
+// "Really free" takes more than a listen that succeeds. Windows lets one program
+// hold 0.0.0.0:6280 while another holds 127.0.0.1:6280, and then quietly hands
+// every local connection to the other one; and a browser may try "localhost" as
+// ::1 first, which another program can own while NAVFLIX owns 127.0.0.1. So once
+// listening, NAVFLIX calls itself on both loopback addresses, and keeps the port
+// only if nobody else answers there.
+//
+// And the program holding the port may be NAVFLIX itself, from a second
+// double-click. Two servers writing one state file would corrupt it, so if the
+// port belongs to this same copy of NAVFLIX, this one opens a window onto that
+// one and bows out.
+const PORT_TRIES = 20;
 
-server.listen(PORT, HOST, () => {
+// What is on a loopback port: 'nobody' (refused), 'answered' along with who it
+// says it is, or 'silent' (it accepted, or hung, and said nothing useful).
+function askPort(host, port) {
+  return new Promise((resolve) => {
+    const req = http.get({
+      host: host, port: port, path: '/api/whoami', timeout: 1500, agent: false,
+      headers: { Host: (host.indexOf(':') !== -1 ? '[' + host + ']' : host) + ':' + port },
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; if (body.length > 4096) req.destroy(); });
+      res.on('end', () => {
+        let who = null;
+        try { who = JSON.parse(body); } catch (e) { /* not NAVFLIX */ }
+        resolve({ status: 'answered', who: who });
+      });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 'silent', who: null }); });
+    req.on('error', (e) => {
+      const nobody = ['ECONNREFUSED', 'EADDRNOTAVAIL', 'ENETUNREACH', 'EAFNOSUPPORT', 'EHOSTUNREACH'];
+      resolve({ status: nobody.indexOf(e.code) !== -1 ? 'nobody' : 'silent', who: null });
+    });
+  });
+}
+
+function listenOn(port) {
+  return new Promise((resolve) => {
+    const failed = (e) => { server.removeListener('listening', ok); resolve(e.code || 'failed'); };
+    const ok = () => { server.removeListener('error', failed); resolve('ok'); };
+    server.once('error', failed);
+    server.once('listening', ok);
+    server.listen(port, HOST);
+  });
+}
+
+const sameCopy = (r) => !!(r.who && r.who.app === 'navflix' && r.who.root === ROOT_TAG);
+
+// -> { port } once listening somewhere nobody else answers, or { already: port }
+// when this same copy of NAVFLIX is running there.
+async function startServer() {
+  const ports = [];
+  for (let i = 0; i < PORT_TRIES && PORT_PREFERRED + i <= 65535; i++) ports.push(PORT_PREFERRED + i);
+  ports.push(0);                                   // whatever the system has spare
+
+  for (const port of ports) {
+    const got = await listenOn(port);
+    if (got !== 'ok') {
+      // Taken, or reserved: Windows keeps whole port ranges for Hyper-V and
+      // answers EACCES for them. Anything else is not about this port.
+      if (got !== 'EADDRINUSE' && got !== 'EACCES') throw new Error('cannot listen (' + got + ')');
+      if (port && sameCopy(await askPort('127.0.0.1', port))) return { already: port };
+      continue;
+    }
+
+    const actual = server.address().port;
+    const v4 = await askPort('127.0.0.1', actual);
+    const v6 = await askPort('::1', actual);
+    const mine = (r) => !!(r.who && r.who.instance === INSTANCE);
+    // ::1 may simply not be in use, or not exist; only someone else answering
+    // there is a problem, because a browser may go to them first.
+    if (mine(v4) && !(v6.status === 'answered' && !mine(v6))) return { port: actual };
+
+    if (server.closeAllConnections) server.closeAllConnections();
+    await new Promise((resolve) => server.close(() => resolve()));
+    if ((sameCopy(v4) && !mine(v4)) || (sameCopy(v6) && !mine(v6))) return { already: actual };
+  }
+  throw new Error('no free port');
+}
+
+startServer().then((r) => {
+  if (r.already) {
+    const there = 'http://localhost:' + r.already;
+    console.log('');
+    console.log('   NAVFLIX is already running from this folder, at ' + there);
+    console.log('   Using that one rather than starting a second copy.');
+    if (!process.env.NO_OPEN && state.openOnStart !== false) openBrowser(there);
+    // A moment for the browser to be handed the address before this exits.
+    setTimeout(() => process.exit(0), 1500);
+    return;
+  }
+
+  PORT = r.port;
+  noteRunning();
   const url = 'http://localhost:' + PORT;
   console.log('');
   console.log('   NAVFLIX is running');
   console.log('   ' + url);
+  if (PORT !== PORT_PREFERRED) {
+    console.log('   (' + PORT_PREFERRED + ' is in use by another program, so NAVFLIX took ' + PORT + '.)');
+  }
   console.log('');
   console.log('   ' + state.collections.length + ' collection(s) tracked.');
   console.log('   Keep this window open while you watch. Close it to shut the app down.');
@@ -4160,6 +4762,13 @@ server.listen(PORT, HOST, () => {
   } else {
     openBrowser(url);
   }
+}).catch((e) => {
+  console.log('');
+  console.log('   NAVFLIX could not start: ' + e.message + '.');
+  console.log('   Tried every port from ' + PORT_PREFERRED + ' to ' + (PORT_PREFERRED + PORT_TRIES - 1) +
+    ', and asked the system for any free one.');
+  console.log('');
+  process.exit(1);
 });
 
 process.on('SIGINT', () => {
@@ -4167,3 +4776,78 @@ process.on('SIGINT', () => {
   saveNow();
   process.exit(0);
 });
+
+// ---------------------------------------------------------------- stopping
+//
+// Started from the desktop icon, NAVFLIX has no console window to close. The
+// launcher (installer/launcher/NAVFLIX.cs) opens the app window, waits for it to
+// be closed, and then asks the server to stop through /api/quit. Two rules:
+//
+//   A film that is still playing is not cut off. VLC is a window of its own and
+//   outlives the app window, and stopping now would lose the position. So the
+//   server waits for VLC to close, saves, and stops then.
+//
+//   Opening NAVFLIX again in the meantime calls that off.
+//
+// data/running.json says which port this run is on, so a second double-click
+// finds it without scanning. The launcher does not trust it blindly: a file
+// left by a crash is checked against /api/whoami first.
+
+const RUNNING_FILE = path.join(DATA_DIR, 'running.json');
+let quitAfterPlayback = false;
+
+function noteRunning() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(RUNNING_FILE, JSON.stringify({
+      port: PORT, pid: process.pid, instance: INSTANCE, url: 'http://localhost:' + PORT,
+    }));
+  } catch (e) { /* the launcher will simply start another one, which finds this */ }
+}
+
+function forgetRunning() {
+  try {
+    const cur = JSON.parse(fs.readFileSync(RUNNING_FILE, 'utf8'));
+    if (cur && cur.instance === INSTANCE) fs.unlinkSync(RUNNING_FILE);
+  } catch (e) { /* someone else's, or already gone */ }
+}
+
+function quitNow() {
+  try { saveNow(); } catch (e) { /* stopping regardless */ }
+  process.exit(0);
+}
+
+// Synchronous, so it runs however the process ends.
+process.on('exit', forgetRunning);
+
+// A safety net for when the launcher cannot tell that the window closed: there
+// was no Edge or Chrome, so the address opened in an ordinary browser tab, or the
+// launcher itself was ended. Nothing asking for the state for a while, nothing
+// playing and nothing being fetched means nobody is using it. Only when started
+// by the launcher; NAVFLIX.bat and start.sh keep running until you close them.
+const IDLE_EXIT = Number(process.env.NAVFLIX_IDLE_EXIT_MS) || 10 * 60 * 1000;
+const IDLE_CHECK = Math.min(30000, Math.max(250, Math.floor(IDLE_EXIT / 4)));
+let lastSeen = Date.now();
+
+function markSeen() {
+  lastSeen = Date.now();
+}
+
+function anyJobRunning() {
+  return [artRun, artJob, tidyJob, detailJob, subJob].some((j) => j && j.running);
+}
+
+if (process.env.NAVFLIX_LAUNCHER === '1') {
+  let lastCheck = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    // Woken from sleep: the timer is late by the length of the nap, and the
+    // window has had no chance to ask for anything. Start counting again.
+    if (now - lastCheck > IDLE_CHECK * 3) lastSeen = now;
+    lastCheck = now;
+    if (!session && !anyJobRunning() && now - lastSeen > IDLE_EXIT) {
+      console.log('   Nothing has used NAVFLIX for a while, so it is stopping.');
+      quitNow();
+    }
+  }, IDLE_CHECK);
+}

@@ -187,13 +187,15 @@ binds `0.0.0.0` and prints an address and a six digit pairing code:
 
 ```
    Phone remote is ON. On a device on the same network, open:
-     http://192.168.1.24:8787/remote
+     http://192.168.1.24:6280/remote
    Pairing code: 610337
 ```
 
-Open that on the phone, type the code once, and it stays paired. Easier still,
-press **QR** in the top bar — beside Settings, and only there once the remote is
-on — and scan what comes up. The code travels with the address, so the phone
+Open that on the phone, type the code once, and it stays paired. The same
+address is always shown in the **bar at the foot of the app**, with **Copy** and
+**QR** buttons beside it, so you never have to go looking for it; with the remote
+off, that bar says so and has a **Turn on** button instead. Easier still, press
+**QR** there and scan what comes up. The code travels with the address, so the phone
 pairs the moment the page opens. The same code is in Settings under *Phone
 remote*, alongside the rest of the controls.
 
@@ -250,7 +252,7 @@ Every request now passes two checks before anything else runs, local or remote:
 
 | Attack | How it works | What stops it |
 | --- | --- | --- |
-| **Cross-site request forgery** | A hostile page posts to `localhost:8787`. It cannot read the reply, but the request alone does the damage. | Anything that changes state must be same-origin (`Sec-Fetch-Site`), name this host in `Origin`, **and** be `application/json` — a type a page cannot send without a CORS preflight, which this server never approves. Browsers differ in which headers they send, so any one of the three is enough. |
+| **Cross-site request forgery** | A hostile page posts to `localhost:6280`. It cannot read the reply, but the request alone does the damage. | Anything that changes state must be same-origin (`Sec-Fetch-Site`), name this host in `Origin`, **and** be `application/json` — a type a page cannot send without a CORS preflight, which this server never approves. Browsers differ in which headers they send, so any one of the three is enough. |
 | **DNS rebinding** | A hostile site points its own domain at `127.0.0.1`, after which the browser treats this server as that site — reads included. | The `Host` header still names the hostile domain. A dotted hostname is refused unless it is an IP literal or a `.local` name. `localhost`, a bare machine name and the LAN address the QR code hands out all still work, because none can be registered on the public internet. |
 
 A request carrying neither `Origin` nor `Sec-Fetch-Site` did not come from a web
@@ -260,17 +262,48 @@ the machine. Tested against 19 forged scenarios, including form posts,
 same-origin post under a rebound name; the dashboard and the phone remote are
 unaffected.
 
-### If it will not start after turning the remote on
+### If the port is taken
+
+NAVFLIX asks for port **6280**. It used to ask for 8787, which is also where
+JBoss and WildFly put their debugger, so on a machine used for work the two kept
+colliding and whichever started second lost. 6280 is not the default of any
+server, debugger or media tool you are likely to have running alongside it.
+
+If 6280 is taken anyway, it does not give up: it tries 6281, 6282 and so on,
+twenty ports along, and if all of those are busy it takes any port the system has
+spare. The console says which one it got, and so does the **bar at the foot of
+the app**, with a **Copy** button.
+
+A listen that succeeds does not prove the port is free. Windows lets one program
+hold `0.0.0.0:6280` while another holds `127.0.0.1:6280`, and then hands every
+local connection to the other one; and a browser may try `localhost` as `::1`
+first, which a different program can own. So once listening, NAVFLIX calls
+itself on both loopback addresses and moves on if anyone else answers.
+
+The busy port may be NAVFLIX itself, from a second double-click. Two servers
+writing one state file would corrupt it, so when the port belongs to NAVFLIX
+running from the same folder, the second copy opens that one and exits.
 
 Switching the remote on widens the bind from `127.0.0.1` to `0.0.0.0`, so the
-port now has to be free on **every** interface rather than just this machine.
-Something already holding it there — a debugger agent, a dev server — was
-invisible while NAVFLIX was loopback-only and suddenly is not. NAVFLIX says so
-and exits rather than dumping a stack trace. Free the port, or pick another:
+port has to be free on **every** interface, and a debugger or dev server that was
+invisible before can suddenly be in the way. The same search for a free port
+covers that too.
+
+A few things follow from moving port:
+
+- A **bookmark or installed app** belongs to one port. One made on
+  `localhost:8787` before the default changed, or on a port NAVFLIX has since
+  moved off, needs making again from the address in the footer.
+- The **phone remote's** address includes the port. The bar at the foot of the
+  app always shows the current one, with **Copy** and **QR**.
+- Preferences the browser keeps, such as the Library's sort order, belong to one
+  address, so they start fresh on a new port.
+
+To start the search somewhere else, set `PORT`:
 
 ```sh
-set PORT=8788 && node server.js        # Windows
-PORT=8788 node server.js               # macOS, Linux
+set PORT=9000 && node server.js        # Windows
+PORT=9000 node server.js               # macOS, Linux
 ```
 
 ## Installing it as an app
@@ -295,8 +328,10 @@ and it will not. The console still prints the address either way.
 You can get the same chrome-less window without installing anything:
 
 ```sh
-chrome --app=http://localhost:8787
+chrome --app=http://localhost:6280
 ```
+
+Use the address at the foot of the app instead if NAVFLIX has had to move port.
 
 Installing is only offered over `http://localhost`, which browsers treat as a
 secure context. Reaching the server by LAN address would not qualify.
@@ -320,30 +355,36 @@ remembered — or leave it to fill itself in, which it now does on its own.
 
 ## Filling itself in
 
-Scanning and fetching artwork were both things you pressed a button for, one
-folder at a time. With eighty folders that is eighty presses, which is why most
-of a library never got either done. Both now also happen quietly in the
-background, a little at a time, in **Settings**:
+Scanning was something you pressed a button for, one folder at a time. With
+eighty folders that is eighty presses, which is why most of a library never got
+it done. It now also happens quietly in the background, a little at a time, in
+**Settings**:
 
 | Switch | What it does | Default |
 | --- | --- | --- |
 | **Read file details in the background** | Resolution, codecs, tracks and real running time for files not looked at yet. Your own disk only. | On |
-| **Fetch artwork in the background** | The posters and episode stills still missing, and the cast, crew and rating for each title. **Uses the network.** | On |
+| **Look up cast and crew in the background** | Who made each title, with its rating and plot. **Uses the network.** | On |
 
-The second is listed separately, and says so plainly, because it is the one that
-goes online. Turn it off and NAVFLIX is back to reaching the network only when
-you press **Get artwork**.
+The second is listed separately, and says so plainly, because it goes online.
 
-**The folder you have open is finished first** — headers, artwork and credits —
-before anything else is touched. Without that the folder you are actually looking
-at could be twentieth in line, and a folder that is quietly twentieth is
+**Artwork is not fetched in the background any more.** It used to be, and that is
+how it got stuck: a show whose folder name the catalogue could not identify was
+never marked as tried, so every fifteen seconds the background went straight back
+to it, and because the folder you have open always goes first, nothing behind it
+ever got a turn. You could neither see that nor stop it. Artwork has its own page
+now; see [The Artwork page](#the-artwork-page). Credits had the same flaw, so a
+show the catalogue has no credits for is asked about at most once a day, and a
+network failure rests the background for five minutes instead of retrying.
+
+**The folder you have open is finished first** — headers, then credits — before
+anything else is touched. Without that the folder you are actually looking at
+could be twentieth in line, and a folder that is quietly twentieth is
 indistinguishable from a feature that does not work.
 
 After that it works across the whole library cheapest-first: every folder’s file
-headers, then every folder’s artwork, then every folder’s credits. Reading headers
-is local and quick, so a shelf of runtimes and resolutions arrives in about half
-an hour; the two network passes take hours and would otherwise hold that up
-behind them.
+headers, then every folder’s credits. Reading headers is local and quick, so a
+shelf of runtimes and resolutions arrives in about half an hour; the network pass
+takes hours and would otherwise hold that up behind it.
 
 ### Coverage
 
@@ -462,17 +503,49 @@ scales the poster into a soft wash instead of showing that bad crop.
 Local backdrops are read from `<film>-fanart.jpg` / `-backdrop.jpg`, or from
 `fanart.jpg` / `backdrop.jpg` when the film has its own subfolder.
 
+### The Artwork page
+
+The **Artwork** button in the top bar opens a page listing every folder and what
+it is missing: *23 of 35 episode stills*, what a show was matched as, and what
+happened the last time artwork was fetched for it. Filter it to **Missing
+artwork**, **Needs attention** or **All folders**, or search.
+
+**Get missing artwork** works through every folder with something missing, one at
+a time, with the folder and the count on screen: *Folder 3 of 12: Love, Death &
+Robots · 14 of 35 · 12 downloaded*. **Stop** stops it after the image in hand.
+Nothing is fetched until you press it, and nothing is fetched in the background.
+
+Each folder has its own buttons as well:
+
+- **Get missing** fetches just that folder, including titles that found nothing
+  before.
+- **Rename** (shows) changes the name a show is looked up by. A show the catalogue
+  cannot identify from its folder name is reported on the page, and left out of
+  the next run until it is renamed. It is never retried in a loop.
+- **Re-identify** (shows) throws the match away and searches again, for when the
+  wrong show was picked.
+- **Open** goes to the folder.
+
+A run spends its time on titles that have never been looked for. Tick **Also try
+again for titles that found nothing last time** to include those too.
+
+Two kinds of failure are kept apart from "nothing found". A download that drops
+is not filed as nothing found, so it is tried again next time. And five failures
+in a row with nothing found between them means the catalogue cannot be reached,
+so the run stops and says so, rather than marking the rest of the library as
+having no artwork.
+
+A new season is noticed too. When episodes turn up that the stored episode list
+has never heard of, the list is fetched again (at most every six hours) before
+they are written off.
+
 ### Get artwork
 
 The billboard has a **Get artwork (n)** button whenever films are missing images.
-It sends each film's title and year to a public film catalogue, downloads the
-poster and backdrop once, and caches both in `data/art/` — after that you are
-fully offline again. The button shows live progress and can be stopped mid-run.
-
-The same work also happens on its own, a little at a time — see
-[Filling itself in](#filling-itself-in). Those two, and nothing else, are when
-NAVFLIX goes near the network; turning the background switch off puts it back to
-only ever going online when you press the button.
+It does what the Artwork page does, for just the folder you have open: sends each
+film's title and year to a public film catalogue, downloads the poster and
+backdrop once, and caches both in `data/art/` — after that you are fully offline
+again. The button shows live progress and can be stopped mid-run.
 
 Budget roughly **25 KB per poster and 500–650 KB per backdrop**, so a 23-film
 marathon costs about 15 MB on disk.
@@ -510,8 +583,8 @@ Avatar The Last Airbender - [2024]     -> the live action one
 Square brackets, round brackets or a trailing `- 2005` all work, and the year is
 used only for matching — it never becomes part of the search.
 
-If a collection has already settled on the wrong title, **Manage → Re-identify**
-searches again and replaces every image. Progress is keyed on filenames, so it
+If a collection has already settled on the wrong title, **Re-identify** on the
+Artwork page (or in Manage) searches again and replaces every image. Progress is keyed on filenames, so it
 is untouched.
 
 A search always returns *something*, so a match is only accepted when the title
@@ -638,11 +711,72 @@ checked against VLC's own option list and accepted ranges. It applies the next
 time something starts playing.
 
 
+## Giving it to someone who is not technical
+
+`installer\build.js` makes **NAVFLIX-Setup.exe**, an ordinary Windows installer.
+The person you give it to double-clicks it, clicks through, and gets a **NAVFLIX**
+icon on the desktop. That is all they ever need to know:
+
+- **Double-click the icon** and NAVFLIX opens in a window of its own.
+- **Close the window** and NAVFLIX stops. If a film is still playing in VLC it
+  waits for VLC to close first, so their place is saved.
+- Double-clicking again while it is open opens another window onto the same
+  NAVFLIX. Nothing runs twice.
+
+Everything it needs is inside, Node and a portable VLC included, so nothing else
+has to be installed first. It installs for that Windows user only, into
+`%LOCALAPPDATA%\Programs\NAVFLIX`, so it needs no administrator password. It starts
+with an empty library: none of your folders, progress, pairing code or phone
+tokens go in. Uninstalling it (Settings → Apps) asks whether to delete their watch
+history too, and keeps it unless they say yes.
+
+The first time, Windows says **"Windows protected your PC"**, because the
+installer is not signed with a paid certificate. **More info → Run anyway** gets
+past it.
+
+### How the icon works
+
+`NAVFLIX.exe` is a small launcher, source in `installer\launcher\NAVFLIX.cs`,
+compiled with the C# compiler that ships with Windows:
+
+1. It starts the server hidden, or finds the one already running through
+   `data\running.json`, which the server writes once it is listening. With no
+   console, what the console would have shown goes to `data\navflix.log`.
+2. It opens NAVFLIX in Edge, or Chrome, as an app window with a profile of its own
+   under `%LOCALAPPDATA%\NAVFLIX`, so it never mixes with everyday browsing.
+3. When the last NAVFLIX window has closed, it asks the server to stop through
+   `/api/quit`, which is local only.
+
+With no Edge or Chrome it opens NAVFLIX in the default browser instead, and the
+server stops itself once nobody has used it for ten minutes, with nothing playing
+and nothing being fetched. A laptop waking from sleep does not count as ten idle
+minutes. `NAVFLIX.exe --quit` stops it straight away; the uninstaller uses that.
+
+A VLC that has never been run opens with a privacy question and can offer updates
+on top of the film, so on Windows NAVFLIX tells it not to.
+
+### Building the installer
+
+Needs Windows, [Inno Setup 6](https://jrsoftware.org/isinfo.php) (free for
+non-commercial use) and the portable VLC zip from
+[videolan.org](https://get.videolan.org/vlc/last/win64/):
+
+```bat
+node installer\build.js --vlc path\to\vlc-3.0.23-win64.zip
+```
+
+It takes Node from `runtime\node\node.exe` (or `--node`), finds Inno Setup where it
+normally installs (or `--iscc`), and writes `NAVFLIX-Setup.exe` to your Desktop
+(or `--out`). It stages everything in your temp folder first, and nothing in
+`data\` ever goes in.
+
 ## Running it
 
 However you start it, a console window opens and your browser lands on the
-dashboard at <http://localhost:8787>. Keep that console window open while you
-watch — it *is* the app. Closing it shuts everything down.
+dashboard at <http://localhost:6280>, or on the next free port if another program
+already has 6280 (see [If the port is taken](#if-the-port-is-taken)). Whichever
+it is, the address is shown at the foot of the app. Keep that console window open
+while you watch — it *is* the app. Closing it shuts everything down.
 
 ### Windows
 
@@ -895,6 +1029,20 @@ featurette, so a genuine short film is missing from the queue while sitting
 plainly in the folder — and pruning against the queue would have deleted its
 progress.
 
+It runs in the background, with a progress bar, a time estimate and a **Stop**
+button. It used to be a single request that waited for the whole answer: a few
+thousand "is this file still there?" checks, and until the drive had answered
+every one the server could answer nothing else, so Settings' Save and everything
+else stopped responding. On a slow or failing drive that could be minutes. Now
+it asks one file at a time and the rest of NAVFLIX keeps working. Removing runs
+the same way, and re-checks each file first, so a file you put back after the
+list was made keeps its position and its poster.
+
+Only a definite *no such file* counts as missing. A drive that is failing throws
+read errors, and treating those as "gone" would offer up the progress for files
+that are sitting right there. A file that cannot be read is left alone, the same
+way an unreadable folder is.
+
 ### It is looked after for you
 
 This one file is the only thing here that cannot be rebuilt. The videos are on
@@ -938,8 +1086,10 @@ length, positions, and history. Nothing is lost and no action is needed.
 | `public/remote.html` | The phone remote |
 | `public/manifest.webmanifest` | Makes it installable as an app window |
 | `public/icon-*.png` | App and tab icons |
+| `public/fonts/` | The Inter typeface (SIL Open Font License, text in `LICENSE-Inter.txt`), shipped with the app so it looks the same on Windows, Linux and macOS. The pages used to ask for Segoe UI, which only Windows has. Split by alphabet, so a browser downloads only the parts a page uses |
 | `check.js` | `npm run check` — syntax-checks the pages before you start |
 | `qr.js` | QR encoder for the pairing code; no dependencies |
+| `installer/` | Builds `NAVFLIX-Setup.exe`: the launcher (`launcher/NAVFLIX.cs`), the Inno Setup script, the icon maker, third-party notices and `build.js`, which puts them together |
 | `probe.js` | Reads resolution, codecs and tracks out of MKV and MP4 headers; no dependencies |
 | `package.json` | Lets you run `npm start`; no dependencies |
 | `data/state.json` | Your progress (created on first run) |
