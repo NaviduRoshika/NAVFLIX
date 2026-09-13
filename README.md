@@ -802,6 +802,57 @@ in: not your library, not your progress, not the pairing code or phone tokens.
 Raise it before a build you intend to hand to someone, and both of you can tell
 at a glance which NAVFLIX they are running.
 
+## Installing it on Linux
+
+Windows gets a setup file; Linux gets a script that does the same job:
+
+```sh
+bash installer/linux/install.sh
+```
+
+It copies NAVFLIX into `~/.local/share/navflix`, adds NAVFLIX to your applications
+menu with its own icon, and puts a `navflix` command in `~/.local/bin`. No root,
+and nothing outside your home folder.
+
+From then on it behaves as the Windows one does:
+
+- **Click the menu entry** and NAVFLIX opens in a window of its own.
+- **Close the window** and NAVFLIX stops, unless a film is still playing in VLC,
+  in which case it waits for VLC to close so your place is saved.
+- **Clicking again** while it is open adds another window onto the same NAVFLIX.
+
+Two things are not bundled, because bundling them on Linux is a poor trade: a
+binary built for one distribution is a liability on the next.
+
+- **Node.js 18 or newer**: `sudo apt install nodejs`
+- **VLC**: `sudo apt install vlc`
+
+The installer checks for both and tells you which is missing. The window itself is
+a Chrome or Chromium app window, so one of those is needed too
+(`sudo apt install chromium-browser`). Without one, NAVFLIX opens in your usual
+browser instead, and closing that tab does not stop it; it stops by itself once
+nothing has used it for ten minutes.
+
+Running the installer again is how you update: `data/` is left exactly as it is.
+To remove it:
+
+```sh
+bash installer/linux/uninstall.sh
+```
+
+which stops NAVFLIX, takes away the menu entry and the program files, and asks
+before deleting your library.
+
+`start.sh` is still there for running NAVFLIX straight out of a folder, console
+window and all, which is what a portable drive wants.
+
+Behind the menu entry is `installer/launcher/navflix-launch.js`, written in Node
+because Node is already there. It starts the server in the background, logs what
+the console would have shown to `data/navflix.log`, opens the window, waits for
+every NAVFLIX window to close by watching `/proc` for the window's own profile,
+and then asks the server to stop through the same local `/api/quit` the Windows
+launcher uses.
+
 ## Running it
 
 However you start it, a console window opens and your browser lands on the
