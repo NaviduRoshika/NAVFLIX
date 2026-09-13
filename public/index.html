@@ -869,6 +869,7 @@
     backdrop-filter: blur(8px);
   }
   .appfoot[hidden] { display: none; }
+  .appfoot .fver { color: #cfd3dc; font-weight: 650; white-space: nowrap; }
   .appfoot .fdot { width: 7px; height: 7px; border-radius: 50%; background: #2e9e5b; flex: none; }
   .appfoot .furl { color: #e7e9ee; font-variant-numeric: tabular-nums; user-select: all; }
   .appfoot .footcopy {
@@ -962,6 +963,7 @@
 <!-- The address to type on the phone, and where this computer reaches NAVFLIX.
      Filled in by renderFoot(). -->
 <div class="appfoot" id="appFoot" hidden>
+  <span class="fver" id="footVer"></span>
   <span class="fdot" id="footDot"></span>
   <span id="footLabel">Phone remote</span>
   <span class="furl" id="footUrl"></span>
@@ -1072,6 +1074,7 @@
 
     <section class="sgrp" id="sGeneral" data-nav="General">
     <h3 class="sec">General</h3>
+    <p class="muted" id="setVersion" style="font-size:12.5px;margin:-4px 0 16px"></p>
     <label class="f">
       <span>VLC location (applies to everything)</span>
       <input type="text" id="setVlc" placeholder="C:\Program Files\VideoLAN\VLC\vlc.exe">
@@ -3223,6 +3226,7 @@ function renderFoot() {
     url = addrs[0];
   }
 
+  $('#footVer').textContent = 'NAVFLIX' + (sv.version ? ' ' + sv.version : '');
   $('#footDot').className = 'fdot ' + dot;
   $('#footLabel').textContent = label;
   $('#footUrl').textContent = url;
@@ -4463,6 +4467,9 @@ function openSettings(jumpTo) {
       : 'Settings for a folder appear here once you have added one.';
   }
 
+  $('#setVersion').textContent = S.server
+    ? 'NAVFLIX ' + (S.server.version || '') + ' · listening on port ' + S.server.port
+    : '';
   $('#setVlc').value = S.vlcPath;
   $('#setFull').checked = S.fullscreen;
   $('#setOpen').checked = S.openOnStart !== false;

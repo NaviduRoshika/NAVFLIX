@@ -767,17 +767,40 @@ on top of the film, so on Windows NAVFLIX tells it not to.
 ### Building the installer
 
 Needs Windows, [Inno Setup 6](https://jrsoftware.org/isinfo.php) (free for
-non-commercial use) and the portable VLC zip from
-[videolan.org](https://get.videolan.org/vlc/last/win64/):
+non-commercial use), a `node.exe` to bundle and a portable VLC from
+[videolan.org](https://get.videolan.org/vlc/last/win64/). Then:
 
 ```bat
-node installer\build.js --vlc path\to\vlc-3.0.23-win64.zip
+node installer\build.js
 ```
 
-It takes Node from `runtime\node\node.exe` (or `--node`), finds Inno Setup where it
-normally installs (or `--iscc`), and writes `NAVFLIX-Setup.exe` to your Desktop
-(or `--out`). It stages everything in your temp folder first, and nothing in
-`data\` ever goes in.
+Everything has a default, so that bare command normally works:
+
+| Piece | Where it looks | Override |
+| --- | --- | --- |
+| Node | `runtime\node\node.exe`, then an installed NAVFLIX, then the Node running the script | `--node` |
+| VLC | `runtime\vlc\`, then an installed NAVFLIX. A zip is unpacked; a folder is copied | `--vlc` |
+| Inno Setup | where it installs, per user or for everyone | `--iscc` |
+| Output | `installer\dist\`, which git ignores | `--out` |
+
+It stages everything in your temp folder first, and nothing in `data\` ever goes
+in: not your library, not your progress, not the pairing code or phone tokens.
+
+### One version number
+
+`version` in `package.json` is the only place it is written. A build stamps it on:
+
+- the setup file's name, `NAVFLIX-Setup-1.1.0.exe`, so which one you handed over
+  is never a guess;
+- the setup wizard, and the entry in Settings → Apps;
+- the properties of `NAVFLIX-Setup.exe` and of `NAVFLIX.exe`, where Windows shows
+  it (`installer\build.js` generates the launcher's version file, so there is
+  nothing to keep in step by hand);
+- the app itself: the bar at the foot of every page, and Settings → General,
+  which also says which port it is on.
+
+Raise it before a build you intend to hand to someone, and both of you can tell
+at a glance which NAVFLIX they are running.
 
 ## Running it
 

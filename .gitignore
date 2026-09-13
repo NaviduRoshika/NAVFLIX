@@ -31,3 +31,6 @@ desktop.ini
 *.zip
 *.tar.xz
 *.bak
+
+# The built installer: 60 MB, rebuilt by the build script in installer/ when needed.
+installer/dist/

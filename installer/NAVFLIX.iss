@@ -22,7 +22,13 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutDir}
-OutputBaseFilename=NAVFLIX-Setup
+; Named with the version, so which one you are handing over is never a guess.
+OutputBaseFilename={#OutputBase}
+; The same version in the file's own properties, where Windows shows it.
+VersionInfoVersion={#AppVersion}
+VersionInfoProductName=NAVFLIX
+VersionInfoDescription=NAVFLIX Setup
+VersionInfoCompany=Navidu Roshika
 SetupIconFile={#Icon}
 UninstallDisplayIcon={app}\NAVFLIX.exe
 UninstallDisplayName=NAVFLIX

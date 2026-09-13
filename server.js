@@ -37,6 +37,14 @@ if (process.env.NAVFLIX_LOG) {
 }
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
+
+// One version number, in package.json, shown everywhere it might be asked for:
+// the console on start, the bar at the foot of the app, Settings, and stamped
+// into the installer and NAVFLIX.exe when one is built.
+const VERSION = (function () {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || '0.0.0'; }
+  catch (e) { return '0.0.0'; }
+})();
 // The port NAVFLIX would like. If another program already has it, startServer()
 // moves up to the next free one, and PORT is whatever it actually got.
 const PORT_PREFERRED = Number(process.env.PORT || 6280);
@@ -3716,7 +3724,7 @@ function snapshot(local) {
     // the remote on only takes effect at the next start, and until then the
     // phone address would lead nowhere.
     server: local
-      ? { url: 'http://localhost:' + PORT, port: PORT, preferred: PORT_PREFERRED, lan: HOST !== '127.0.0.1' }
+      ? { url: 'http://localhost:' + PORT, port: PORT, preferred: PORT_PREFERRED, lan: HOST !== '127.0.0.1', version: VERSION }
       : null,
     remote: {
       enabled: !!state.remote.enabled,
@@ -4736,7 +4744,7 @@ startServer().then((r) => {
   noteRunning();
   const url = 'http://localhost:' + PORT;
   console.log('');
-  console.log('   NAVFLIX is running');
+  console.log('   NAVFLIX ' + VERSION + ' is running');
   console.log('   ' + url);
   if (PORT !== PORT_PREFERRED) {
     console.log('   (' + PORT_PREFERRED + ' is in use by another program, so NAVFLIX took ' + PORT + '.)');

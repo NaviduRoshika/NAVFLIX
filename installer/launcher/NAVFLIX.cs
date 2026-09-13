@@ -29,11 +29,8 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: System.Reflection.AssemblyTitle("NAVFLIX")]
-[assembly: System.Reflection.AssemblyProduct("NAVFLIX")]
-[assembly: System.Reflection.AssemblyDescription("Opens NAVFLIX, and stops it when its window is closed")]
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
+// The name and version live in an AssemblyInfo.cs that installer\build.js writes
+// from package.json, so there is one version number and nothing to forget.
 
 static class Launcher
 {
