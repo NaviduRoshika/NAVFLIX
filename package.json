@@ -1,6 +1,6 @@
 {
   "name": "navflix",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Watch a folder of movies as a series, one timed episode a day.",
   "main": "server.js",
